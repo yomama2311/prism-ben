@@ -52,14 +52,47 @@ class OracleWorldModelPolicy(WorldModelPolicy):
         # Store ALL actions (not subsampled) so we can look up future action
         # sequences for "smart" oracle plans, not just single-step actions.
         with h5py.File(dataset_h5_path, 'r') as f:
-            n = f[match_key].shape[0]
-            n_use = min(n, dataset_max_rows)
+            # Auto-fallback: some tasks (e.g. tworoom) lack 'state' but have 'proprio'.
+            available_keys = list(f.keys())
+            if match_key not in available_keys:
+                fallback_priority = ['state', 'proprio', 'observation']
+                fallback = next((k for k in fallback_priority if k in available_keys), None)
+                if fallback is None:
+                    raise KeyError(
+                        f"Match key '{match_key}' not in dataset {dataset_h5_path}. "
+                        f"Available keys: {available_keys}"
+                    )
+                if self.verbose:
+                    print(f"[Oracle] match_key '{match_key}' not in dataset; "
+                          f"falling back to '{fallback}'")
+                match_key = fallback
+                self.match_key = fallback
+
+            # Some datasets (e.g. reacher_random) have NaN action rows at
+            # episode boundaries (truncated frames). Filter these — they would
+            # otherwise propagate NaNs into the solver and crash the env.
+            all_actions_np = f['action'][:].astype(np.float32)
+            valid_mask = ~np.isnan(all_actions_np).any(axis=1)
+            n_total_raw = all_actions_np.shape[0]
+            if not valid_mask.all():
+                n_dropped = (~valid_mask).sum()
+                if self.verbose:
+                    print(f"[Oracle] Dropping {n_dropped}/{n_total_raw} rows with NaN actions")
+                # Replace NaN actions with 0 (action) for sequence-lookup safety;
+                # KNN matching will still index original positions but avoid NaN
+                all_actions_np = np.where(np.isnan(all_actions_np), 0.0, all_actions_np)
+
+            self._all_actions = all_actions_np
+            self._valid_mask = valid_mask
+            self._n_total = n_total_raw
+
+            # Sample states only from rows where the action is valid (KNN target)
+            valid_idx = np.nonzero(valid_mask)[0]
+            n_use = min(len(valid_idx), dataset_max_rows)
             rng = np.random.default_rng(0)
-            sub_idx = rng.choice(n, n_use, replace=False)
-            sub_idx.sort()
+            sub_idx = np.sort(rng.choice(valid_idx, n_use, replace=False))
             states = f[match_key][sub_idx]
-            self._all_actions = f['action'][:].astype(np.float32)  # full sequence
-            self._n_total = n
+            n = self._n_total
 
         self._expert_states = states.astype(np.float32)
         self._sub_idx = sub_idx  # maps KNN result idx → original dataset row idx
