@@ -37,13 +37,13 @@ PRISM adds negligible compute overhead per plan call.
 
 ## 5.2 Sigma sweep (5 episodes, smart oracle)
 
-| Oracle σ | predicted influence | SR | Interpretation |
-|---|---|---|---|
-| 10000 (control) | ≈0% | 80% | matches stock MPPI baseline |
-| 1.0 | 50% | 80% | medium influence, no impact yet |
-| 0.5 | 80% | 80% | strong influence, still no impact |
-| **0.1** | 99% | **100%** | **strong + good prior → perfect** |
-| 0.05 | 99.75% | 100% | same |
+| Oracle σ        | predicted influence | SR       | Interpretation                    |
+| --------------- | ------------------- | -------- | --------------------------------- |
+| 10000 (control) | ≈0%                 | 80%      | matches stock MPPI baseline       |
+| 1.0             | 50%                 | 80%      | medium influence, no impact yet   |
+| 0.5             | 80%                 | 80%      | strong influence, still no impact |
+| **0.1**         | 99%                 | **100%** | **strong + good prior → perfect** |
+| 0.05            | 99.75%              | 100%     | same                              |
 
 The transition between σ=0.5 (80%) and σ=0.1 (100%) is sharp — there's a
 threshold below which the prior dominates enough to lock onto the expert

@@ -40,3 +40,11 @@ wandb/
 
 # Eval result outputs (regenerable)
 *results*.txt
+
+# Per-run stdout logs (regenerable, voluminous)
+logs/*.stdout
+logs/*.log
+logs/.obsidian/
+
+# Obsidian metadata in docs
+docs/.obsidian/

@@ -21,11 +21,11 @@ Reductions vs prior JEPA approaches:
 LeWM itself is intentionally minimal — it ships only the model architecture and
 training objective. The full pipeline depends on two libraries:
 
-| Repo | Role |
-|---|---|
-| `lucas-maes/le-wm` | Model definition (`jepa.py`, `module.py`), training loop, eval loop |
-| `galilai-group/stable-worldmodel` | Environments (PushT, Cube, TwoRooms, Reacher), planners (CEM, MPPI, Random, GD), policies, dataset I/O |
-| `galilai-group/stable-pretraining` | Backbone utilities (ViT-Hugging Face wrapping), training callbacks |
+| Repo                               | Role                                                                                                   |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `lucas-maes/le-wm`                 | Model definition (`jepa.py`, `module.py`), training loop, eval loop                                    |
+| `galilai-group/stable-worldmodel`  | Environments (PushT, Cube, TwoRooms, Reacher), planners (CEM, MPPI, Random, GD), policies, dataset I/O |
+| `galilai-group/stable-pretraining` | Backbone utilities (ViT-Hugging Face wrapping), training callbacks                                     |
 
 Our `prism-jepa` is forked from `lucas-maes/le-wm` with stable-worldmodel
 and stable-pretraining installed via pip in the local venv.
@@ -57,13 +57,13 @@ class JEPA(nn.Module):
         ...
 ```
 
-| Component | Type | Role |
-|---|---|---|
-| `encoder` | ViT-tiny (patch=14, image=224) | RGB image → 192-dim embedding |
-| `action_encoder` | `Embedder` (MLP) | action sequence → action representation |
-| `predictor` | `ARPredictor` (autoregressive Transformer with AdaLN-zero) | (embedding seq, action seq) → next-embedding seq |
-| `projector` | MLP (BatchNorm-normed) | embedding → projected space (for prediction loss) |
-| `pred_proj` | MLP (BatchNorm-normed) | predicted embedding → projected space |
+| Component        | Type                                                       | Role                                              |
+| ---------------- | ---------------------------------------------------------- | ------------------------------------------------- |
+| `encoder`        | ViT-tiny (patch=14, image=224)                             | RGB image → 192-dim embedding                     |
+| `action_encoder` | `Embedder` (MLP)                                           | action sequence → action representation           |
+| `predictor`      | `ARPredictor` (autoregressive Transformer with AdaLN-zero) | (embedding seq, action seq) → next-embedding seq  |
+| `projector`      | MLP (BatchNorm-normed)                                     | embedding → projected space (for prediction loss) |
+| `pred_proj`      | MLP (BatchNorm-normed)                                     | predicted embedding → projected space             |
 
 ### Forward pass for cost computation (`get_cost`)
 
@@ -120,12 +120,12 @@ supervision.
 
 ## 1.5 Tasks LeWM was evaluated on
 
-| Task | Description | Action dim (raw) | Goal type |
-|---|---|---|---|
-| `PushT` (`swm/PushT-v1`) | Push T-shape onto target | 2D (Δx, Δy) | Goal image |
-| `Cube` | Manipulation with cube | (TBD) | Goal image |
-| `TwoRooms` | Navigation through 2 rooms | (TBD) | Goal image |
-| `Reacher` | DM-control reacher | (TBD) | Goal image |
+| Task                     | Description                | Action dim (raw) | Goal type  |
+| ------------------------ | -------------------------- | ---------------- | ---------- |
+| `PushT` (`swm/PushT-v1`) | Push T-shape onto target   | 2D (Δx, Δy)      | Goal image |
+| `Cube`                   | Manipulation with cube     | (TBD)            | Goal image |
+| `TwoRooms`               | Navigation through 2 rooms | (TBD)            | Goal image |
+| `Reacher`                | DM-control reacher         | (TBD)            | Goal image |
 
 All tasks are visually-driven — the cost is `MSE(predicted_final_embedding,
 goal_image_embedding)`. There's no reward signal during planning.

@@ -15,12 +15,14 @@ world models like LeWM.
 
 | File | Topic |
 |---|---|
+| `00_session_handover.md` | **READ FIRST** — entry point for fresh-terminal sessions |
 | `01_lewm_codebase.md` | LeWM repository structure, JEPA architecture, key code paths |
 | `02_planning_and_rl.md` | How LeWM relates to RL & planning; JEPA vs reward-driven RL |
 | `03_prism_mechanism.md` | PoG fusion math, MPPI injection point, normalization |
-| `04_experiments.md` | Chronological log of today's debugging journey |
+| `04_experiments.md` | Chronological log of 2026-04-29 debugging journey |
 | `05_results.md` | Headline numbers, sigma sweep, comparison with Newt-PRISM |
-| `06_roadmap.md` | Phase 2/3 plans toward a publishable paper |
+| `06_roadmap.md` | Phase 1-4 plans toward a publishable paper |
+| `07_phase2_results.md` | Phase 2 K-sweep results + Tworoom diagnosis |
 
 ---
 
