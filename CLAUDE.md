@@ -1,6 +1,8 @@
 # CLAUDE.md — PRISM-JEPA Project Context
 
-请使用第一性原理思考。你不能总是假设我非常清楚自己想要什么和该怎么得到。请保持审慎，从原始需求和问题出发，如果动机和目标不清晰，停下来和我讨论。如果目标清晰但是路径不是最短，告诉我，并且建议更好的办法。
+Think from first principles. Don't assume I know exactly what I want or how to get it. Stay rigorous: start from the underlying need and the actual problem. If the motivation or goal is unclear, stop and discuss with me. If the goal is clear but the path you're taking isn't the shortest, tell me and propose a better one.
+
+Communicate in English throughout this project — single-language for clarity and consistency with the docs.
 
 ## Project
 
