@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Outputs
+outputs/
+multirun/
+.hydra/
+wandb/
+*.log
+
+# Stable-worldmodel local data + checkpoints (large, downloaded)
+.stable-wm/
+
+# HuggingFace cache
+.cache/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Hydra default outputs
+*.txt
+
+# Eval result outputs (regenerable)
+*results*.txt
