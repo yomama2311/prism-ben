@@ -48,19 +48,24 @@ class OracleWorldModelPolicy(WorldModelPolicy):
         self.match_key = match_key
         self.verbose = verbose
 
-        # Pre-load expert (state, action) pairs and build KNN index
+        # Pre-load expert (state, action) pairs and build KNN index.
+        # Store ALL actions (not subsampled) so we can look up future action
+        # sequences for "smart" oracle plans, not just single-step actions.
         with h5py.File(dataset_h5_path, 'r') as f:
             n = f[match_key].shape[0]
             n_use = min(n, dataset_max_rows)
             rng = np.random.default_rng(0)
-            idx = rng.choice(n, n_use, replace=False)
-            idx.sort()
-            states = f[match_key][idx]
-            actions = f['action'][idx]
+            sub_idx = rng.choice(n, n_use, replace=False)
+            sub_idx.sort()
+            states = f[match_key][sub_idx]
+            self._all_actions = f['action'][:].astype(np.float32)  # full sequence
+            self._n_total = n
 
         self._expert_states = states.astype(np.float32)
-        self._expert_actions = actions.astype(np.float32)
+        self._sub_idx = sub_idx  # maps KNN result idx → original dataset row idx
         self._kdtree = cKDTree(self._expert_states)
+        # Backward-compat: single-step actions for KNN result (subsampled)
+        self._expert_actions = self._all_actions[sub_idx]
         if self.verbose:
             print(f"[Oracle] Loaded {n_use} expert (state, action) pairs")
             print(f"[Oracle] state dim: {self._expert_states.shape[1]}, "
@@ -73,26 +78,42 @@ class OracleWorldModelPolicy(WorldModelPolicy):
         # Get current state for each env (before _prepare_info modifies info_dict)
         current_states = self._extract_current_state(info_dict)
 
-        # KNN lookup: find nearest expert state for each env
-        _, indices = self._kdtree.query(current_states, k=1)
-        oracle_actions = self._expert_actions[indices]  # (n_envs, action_dim)
+        # KNN lookup in raw state space (dataset and env states both un-normalized
+        # at this point — _prepare_info hasn't run yet)
+        _, sub_indices = self._kdtree.query(current_states, k=1)
+        # Map subsampled KNN index back to original dataset row index
+        orig_indices = self._sub_idx[sub_indices]  # (n_envs,)
 
-        # Build constant prior over planning horizon
-        H = self.cfg.horizon * self.cfg.action_block  # action_dim is flattened
-        # action_block frames repeated, but we just constant-fill
-        n_envs = oracle_actions.shape[0]
-        action_dim = self.solver.action_dim  # flattened including action_block
-        # Repeat oracle action to fill horizon × action_block dims
-        # oracle is per-step (action_dim_raw,) but solver expects (n_envs, horizon, action_dim_flattened)
-        # action_dim_flattened = action_dim_raw * action_block
-        action_dim_raw = oracle_actions.shape[1]
         block = self.cfg.action_block
-        # tile across the action_block dim
-        oracle_block = np.tile(oracle_actions, (1, block))  # (n_envs, action_dim_raw * block)
-        # tile across horizon
-        oracle_seq = np.tile(
-            oracle_block[:, None, :], (1, self.cfg.horizon, 1)
-        )  # (n_envs, horizon, action_dim_flattened)
+        H = self.cfg.horizon
+        plan_steps = H * block  # 25 env steps for pusht (H=5, block=5)
+        n_envs = orig_indices.shape[0]
+        raw_action_dim = self._all_actions.shape[1]
+
+        # SMART oracle: take expert's NEXT plan_steps actions starting from matched state.
+        # This is much better than tiling a single action over the horizon.
+        # Clip to dataset bounds.
+        plan_actions = np.zeros(
+            (n_envs, plan_steps, raw_action_dim), dtype=np.float32
+        )
+        for e in range(n_envs):
+            start = orig_indices[e]
+            end = min(start + plan_steps, self._n_total)
+            seg = self._all_actions[start:end]
+            plan_actions[e, :seg.shape[0]] = seg
+            # If we ran off the end of the dataset, repeat the last action
+            if seg.shape[0] < plan_steps:
+                plan_actions[e, seg.shape[0]:] = seg[-1]
+
+        # CRITICAL: normalize oracle actions to match solver's StandardScaler space.
+        if self.process is not None and "action" in self.process:
+            flat = plan_actions.reshape(-1, raw_action_dim)
+            flat = self.process["action"].transform(flat)
+            plan_actions = flat.reshape(n_envs, plan_steps, raw_action_dim)
+
+        # Reshape (n_envs, plan_steps, raw_dim) → (n_envs, horizon, raw_dim*block)
+        # Each horizon step contains `block` consecutive raw actions, flattened.
+        oracle_seq = plan_actions.reshape(n_envs, H, block * raw_action_dim)
 
         mu = torch.from_numpy(oracle_seq).float()
         sigma = torch.ones_like(mu) * self.oracle_sigma
@@ -100,7 +121,7 @@ class OracleWorldModelPolicy(WorldModelPolicy):
 
         if self.verbose and self._n_get_action_calls % 10 == 0:
             print(f"[Oracle step {self._n_get_action_calls}] "
-                  f"state[0]={current_states[0]}, oracle_action[0]={oracle_actions[0]}")
+                  f"state[0]={current_states[0]}, plan[0,0]={plan_actions[0, 0]}")
         self._n_get_action_calls += 1
 
         return super().get_action(info_dict, **kwargs)

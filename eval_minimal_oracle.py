@@ -52,10 +52,20 @@ def run(cfg: DictConfig):
     cfg.world.max_episode_steps = 2 * cfg.eval.eval_budget
     world = swm.World(**cfg.world, image_shape=(224, 224))
 
-    process = {"action": preprocessing.MinMaxScaler(feature_range=(-1, 1))}
     transform = {"pixels": img_transform(cfg), "goal": img_transform(cfg)}
     dataset = get_dataset(cfg, cfg.eval.dataset_name)
-    process["action"].fit(dataset.get_col_data("action"))
+    # CRITICAL: match eval.py — StandardScaler on all non-pixel cols
+    process = {}
+    for col in cfg.dataset.keys_to_cache:
+        if col in ["pixels"]:
+            continue
+        processor = preprocessing.StandardScaler()
+        col_data = dataset.get_col_data(col)
+        col_data = col_data[~np.isnan(col_data).any(axis=1)]
+        processor.fit(col_data)
+        process[col] = processor
+        if col != "action":
+            process[f"goal_{col}"] = process[col]
 
     ep_indices = np.unique(dataset.get_col_data(
         "episode_idx" if "episode_idx" in dataset.column_names else "ep_idx"
@@ -68,12 +78,9 @@ def run(cfg: DictConfig):
     config = swm.PlanConfig(**cfg.plan_config)
     solver = hydra.utils.instantiate(cfg.solver, model=model)  # ← STOCK MPPISolver
 
-    # KEY DIFFERENCE: use OracleWorldModelPolicy, but it'll fail set_prior assertion
-    # with stock MPPISolver. So we monkey-patch a no-op set_prior on the solver.
-    if not hasattr(solver, 'set_prior'):
-        solver.set_prior = lambda *a, **kw: None
-
-    policy = OracleWorldModelPolicy(
+    # CONTROL: use stock WorldModelPolicy directly. If THIS gives 80% in this
+    # script, then the bug is in our subclass. If 0%, bug is in this script's setup.
+    policy = swm.policy.WorldModelPolicy(
         solver=solver, config=config, process=process, transform=transform,
     )
     results_path = Path(swm.data.utils.get_cache_dir(), cfg.policy).parent

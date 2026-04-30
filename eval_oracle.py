@@ -96,16 +96,27 @@ def run(cfg: DictConfig):
     cfg.world.max_episode_steps = 2 * cfg.eval.eval_budget
     world = swm.World(**cfg.world, image_shape=(224, 224))
 
-    process = {
-        "action": preprocessing.MinMaxScaler(feature_range=(-1, 1)),
-    }
     transform = {
         "pixels": img_transform(cfg),
         "goal": img_transform(cfg),
     }
 
     dataset = get_dataset(cfg, cfg.eval.dataset_name)
-    process["action"].fit(dataset.get_col_data("action"))
+
+    # CRITICAL: match eval.py's preprocessing — StandardScaler for ALL non-pixel cols.
+    # Earlier versions used only MinMaxScaler for 'action', which left state/proprio
+    # un-normalized → world model receives raw values → cost is meaningless → SR = 0.
+    process = {}
+    for col in cfg.dataset.keys_to_cache:
+        if col in ["pixels"]:
+            continue
+        processor = preprocessing.StandardScaler()
+        col_data = dataset.get_col_data(col)
+        col_data = col_data[~np.isnan(col_data).any(axis=1)]
+        processor.fit(col_data)
+        process[col] = processor
+        if col != "action":
+            process[f"goal_{col}"] = process[col]
     ep_indices = np.unique(
         dataset.get_col_data(
             "episode_idx" if "episode_idx" in dataset.column_names else "ep_idx"
