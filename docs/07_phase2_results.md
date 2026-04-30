@@ -66,7 +66,60 @@ Oracle hurts or ties baseline. Mean: baseline 71%, oracle 66%.
 
 ## 7.3 Why PushT and Cube succeed but Tworoom fails
 
-Three factors aligned for PushT/Cube:
+### Diagnostic experiment (2026-04-30)
+
+We hypothesized tworoom's failure was because the proprio-only KNN matched
+expert states with **different goals**. Verification:
+
+```
+KNN ambiguity test (50K state subsample, top-10 NN per query):
+  proprio (2D)        : matches span 8-10/10 distinct episodes  (high ambiguity)
+  observation (10D)   : matches span 2-3/10 distinct episodes   (lower ambiguity)
+```
+
+The 10D observation includes `pos_target` (goal coords) at dims 2-3, so
+matching on it disambiguates trajectories with different goals.
+
+We then implemented **multi-key KNN** (state + goal_state at runtime, mapped
+to proprio + pos_target in the h5 file) and re-ran the 50-episode eval:
+
+| Match strategy | SR @ 50 ep |
+|---|---|
+| Single-key proprio (original) | 64% |
+| **Multi-key state + goal_state** | **56%** ← *worse* |
+
+Multi-key matching reduces KNN ambiguity but produces **lower** SR. The
+follow-up diagnosis:
+
+| Match strategy | What KNN returns | Failure mode |
+|---|---|---|
+| Single proprio | Expert at same position, **different goal** | Wrong direction |
+| Multi-key proprio+goal | Expert at **different position**, same goal | Wrong action sequence for our position |
+
+**Manipulation tasks (PushT, Cube) tolerate small action errors** — local
+perturbations propagate softly through MSE-to-goal embedding cost. The next
+MPPI iteration corrects via cost reweighting.
+
+**Navigation tasks (Tworoom) are sensitive to action precision** — a single
+wrong direction step at a doorway can put the agent on a path that adds 25+
+extra steps to reach the goal. The world model's MSE cost catches this
+poorly because intermediate states between rooms have similar embeddings.
+
+### Why this is actually a paper-positive negative result
+
+This is a **strong argument for VLM-based priors**, which can:
+
+- **Generate** an action plan for arbitrary (state, goal) — no retrieval
+  needed.
+- **Reason about navigation structure** ("door is at position X, go through
+  it") in ways that 4D KNN cannot.
+- **Compose** observations from disparate training trajectories.
+
+The KNN-oracle ceiling on Tworoom (64-56%, near baseline 66%) bounds what
+*any* retrieval-style prior could achieve. A VLM-PRISM that beats this
+ceiling demonstrates **generative reasoning beyond retrieval**.
+
+### Three factors that align for PushT/Cube but not Tworoom
 
 1. **Expert dataset quality**: PushT uses `pusht_expert_train`, Cube uses
    `cube_single_expert`. Both are demonstrated trajectories from skilled

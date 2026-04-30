@@ -80,16 +80,24 @@ def run(cfg: DictConfig):
     oracle_cfg = cfg.get("oracle", {})
     oracle_sigma = oracle_cfg.get("sigma", 0.1)
     oracle_match_key = oracle_cfg.get("match_key", "state")
+    # Multi-key matching (e.g. tworoom: state + goal_state) for KNN disambiguation.
+    # If not specified, falls back to [match_key].
+    raw_mk = oracle_cfg.get("match_keys", None)
+    raw_h5_mk = oracle_cfg.get("h5_match_keys", None)
+    oracle_match_keys = list(raw_mk) if raw_mk is not None else None
+    oracle_h5_match_keys = list(raw_h5_mk) if raw_h5_mk is not None else None
     dataset_h5 = oracle_cfg.get(
         "dataset_h5",
         str(Path(swm.data.utils.get_cache_dir()) / f"{cfg.eval.dataset_name}.h5"),
     )
     oracle_max_rows = oracle_cfg.get("max_rows", 200_000)
     print(f"\n[Oracle config]")
-    print(f"  sigma         = {oracle_sigma}")
-    print(f"  match_key     = {oracle_match_key}")
-    print(f"  dataset_h5    = {dataset_h5}")
-    print(f"  max_rows      = {oracle_max_rows}")
+    print(f"  sigma           = {oracle_sigma}")
+    print(f"  match_key       = {oracle_match_key}")
+    print(f"  match_keys      = {oracle_match_keys}")
+    print(f"  h5_match_keys   = {oracle_h5_match_keys}")
+    print(f"  dataset_h5      = {dataset_h5}")
+    print(f"  max_rows        = {oracle_max_rows}")
     print()
 
     # ---- Build env / world ----
@@ -150,6 +158,8 @@ def run(cfg: DictConfig):
         dataset_max_rows=oracle_max_rows,
         oracle_sigma=oracle_sigma,
         match_key=oracle_match_key,
+        match_keys=oracle_match_keys,
+        h5_match_keys=oracle_h5_match_keys,
         verbose=True,
     )
 

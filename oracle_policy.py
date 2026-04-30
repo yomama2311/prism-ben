@@ -34,6 +34,8 @@ class OracleWorldModelPolicy(WorldModelPolicy):
         dataset_max_rows: int = 200_000,
         oracle_sigma: float = 0.1,
         match_key: str = 'state',
+        match_keys: list = None,        # multi-key concat: e.g. ['state', 'goal_state']
+        h5_match_keys: list = None,     # corresponding h5 keys (default: same as match_keys)
         verbose: bool = False,
         **kwargs,
     ):
@@ -44,33 +46,52 @@ class OracleWorldModelPolicy(WorldModelPolicy):
         assert hasattr(solver, 'set_prior'), \
             "Solver must implement set_prior() — use PrismMPPISolver"
 
-        self.oracle_sigma = oracle_sigma
-        self.match_key = match_key
+        # Normalize match_keys: prefer multi-key list; fall back to legacy single match_key
+        if match_keys is not None and len(match_keys) > 0:
+            self.match_keys = list(match_keys)
+        else:
+            self.match_keys = [match_key]
+        # h5 may use different field names than runtime info_dict (e.g. tworoom:
+        # info_dict has 'state'/'goal_state' but h5 has 'proprio'/'pos_target')
+        if h5_match_keys is not None and len(h5_match_keys) > 0:
+            self.h5_match_keys = list(h5_match_keys)
+        else:
+            self.h5_match_keys = self.match_keys
+
+        # Backward-compat: keep `match_key` attribute for any consumer
+        self.match_key = self.match_keys[0]
+
         self.verbose = verbose
+        self.oracle_sigma = oracle_sigma
 
         # Pre-load expert (state, action) pairs and build KNN index.
-        # Store ALL actions (not subsampled) so we can look up future action
-        # sequences for "smart" oracle plans, not just single-step actions.
         with h5py.File(dataset_h5_path, 'r') as f:
-            # Auto-fallback: some tasks (e.g. tworoom) lack 'state' but have 'proprio'.
             available_keys = list(f.keys())
-            if match_key not in available_keys:
+
+            # Auto-fallback for the FIRST h5 key only (preserves backward compat)
+            if self.h5_match_keys[0] not in available_keys:
                 fallback_priority = ['state', 'proprio', 'observation']
                 fallback = next((k for k in fallback_priority if k in available_keys), None)
                 if fallback is None:
                     raise KeyError(
-                        f"Match key '{match_key}' not in dataset {dataset_h5_path}. "
-                        f"Available keys: {available_keys}"
+                        f"h5 match key '{self.h5_match_keys[0]}' not in dataset. "
+                        f"Available: {available_keys}"
                     )
                 if self.verbose:
-                    print(f"[Oracle] match_key '{match_key}' not in dataset; "
+                    print(f"[Oracle] h5 match key '{self.h5_match_keys[0]}' not found; "
                           f"falling back to '{fallback}'")
-                match_key = fallback
+                self.h5_match_keys[0] = fallback
+                self.match_keys[0] = fallback
                 self.match_key = fallback
 
-            # Some datasets (e.g. reacher_random) have NaN action rows at
-            # episode boundaries (truncated frames). Filter these — they would
-            # otherwise propagate NaNs into the solver and crash the env.
+            # Verify all keys exist
+            for k in self.h5_match_keys:
+                if k not in available_keys:
+                    raise KeyError(
+                        f"h5 match key '{k}' not in dataset. Available: {available_keys}"
+                    )
+
+            # Filter NaN actions (reacher_random has NaN at episode boundaries)
             all_actions_np = f['action'][:].astype(np.float32)
             valid_mask = ~np.isnan(all_actions_np).any(axis=1)
             n_total_raw = all_actions_np.shape[0]
@@ -78,30 +99,37 @@ class OracleWorldModelPolicy(WorldModelPolicy):
                 n_dropped = (~valid_mask).sum()
                 if self.verbose:
                     print(f"[Oracle] Dropping {n_dropped}/{n_total_raw} rows with NaN actions")
-                # Replace NaN actions with 0 (action) for sequence-lookup safety;
-                # KNN matching will still index original positions but avoid NaN
                 all_actions_np = np.where(np.isnan(all_actions_np), 0.0, all_actions_np)
 
             self._all_actions = all_actions_np
             self._valid_mask = valid_mask
             self._n_total = n_total_raw
 
-            # Sample states only from rows where the action is valid (KNN target)
+            # Sample states from valid rows; concat multi-key h5 fields
             valid_idx = np.nonzero(valid_mask)[0]
             n_use = min(len(valid_idx), dataset_max_rows)
             rng = np.random.default_rng(0)
             sub_idx = np.sort(rng.choice(valid_idx, n_use, replace=False))
-            states = f[match_key][sub_idx]
-            n = self._n_total
+            # Build multi-key concatenated state vector
+            state_parts = []
+            for hk in self.h5_match_keys:
+                arr = f[hk][sub_idx]
+                if arr.ndim == 1:
+                    arr = arr[:, None]
+                state_parts.append(arr.astype(np.float32))
+            states = np.concatenate(state_parts, axis=1)
+            self._h5_dim_per_key = [p.shape[1] for p in state_parts]
 
-        self._expert_states = states.astype(np.float32)
+        self._expert_states = states
         self._sub_idx = sub_idx  # maps KNN result idx → original dataset row idx
         self._kdtree = cKDTree(self._expert_states)
         # Backward-compat: single-step actions for KNN result (subsampled)
         self._expert_actions = self._all_actions[sub_idx]
         if self.verbose:
-            print(f"[Oracle] Loaded {n_use} expert (state, action) pairs")
-            print(f"[Oracle] state dim: {self._expert_states.shape[1]}, "
+            print(f"[Oracle] Loaded {n_use} expert pairs")
+            print(f"[Oracle] match_keys (runtime): {self.match_keys}")
+            print(f"[Oracle] h5_match_keys: {self.h5_match_keys} → dims {self._h5_dim_per_key}")
+            print(f"[Oracle] concatenated state dim: {self._expert_states.shape[1]}, "
                   f"action dim: {self._expert_actions.shape[1]}")
 
         self._n_get_action_calls = 0
@@ -162,22 +190,25 @@ class OracleWorldModelPolicy(WorldModelPolicy):
     def _extract_current_state(self, info_dict: dict) -> np.ndarray:
         """Extract current state per env as a numpy array of shape (n_envs, state_dim).
 
-        Handles both shapes: (n_envs, history, state_dim) and (n_envs, state_dim).
+        Concatenates multiple match_keys (e.g. ['state', 'goal_state']) so that
+        KNN matching disambiguates between expert trajectories with different
+        goals. For single-key default, behaves identically to the old version.
         """
-        v = info_dict[self.match_key]
-        if torch.is_tensor(v):
-            v = v.detach().cpu().numpy()
-        else:
-            v = np.asarray(v)
-
-        if v.ndim == 3:
-            # (n_envs, history, state_dim) — take latest frame
-            v = v[:, -1]
-        elif v.ndim == 2:
-            # (n_envs, state_dim) — already correct
-            pass
-        else:
-            raise ValueError(
-                f"Unexpected shape for {self.match_key}: {v.shape}"
-            )
+        parts = []
+        for k in self.match_keys:
+            v = info_dict[k]
+            if torch.is_tensor(v):
+                v = v.detach().cpu().numpy()
+            else:
+                v = np.asarray(v)
+            if v.ndim == 3:
+                v = v[:, -1]   # (n_envs, history, dim) → (n_envs, dim)
+            elif v.ndim == 2:
+                pass
+            elif v.ndim == 1:
+                v = v[:, None]  # (n_envs,) → (n_envs, 1)
+            else:
+                raise ValueError(f"Unexpected shape for '{k}': {v.shape}")
+            parts.append(v.astype(np.float32))
+        v = np.concatenate(parts, axis=1)
         return v.astype(np.float32)
