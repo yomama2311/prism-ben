@@ -29,6 +29,9 @@ wandb/
 # Stable-worldmodel local data + checkpoints (large, downloaded)
 .stable-wm/
 
+# Trained head checkpoints — host on HF / git-lfs, not in main git history.
+*.pt
+
 # HuggingFace cache
 .cache/
 

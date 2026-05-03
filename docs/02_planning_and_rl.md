@@ -119,12 +119,12 @@ Q-network learns the same task knowledge.
 
 ## 2.4 The crucial difference for PRISM
 
-| Property | LeWM (goal-conditioned) | Newt (reward-driven) |
-|---|---|---|
-| Learned signal of "good direction" | None (only embedding distance) | Q-network |
-| Can the agent bypass the prior? | No — only embedding-distance scoring | Yes — Q can subsume VLM knowledge |
-| Is VLM contribution measurable? | **Yes — directly** | Diminishes with training |
-| What controls SR? | Quality of action prior + JEPA's representation | Q-network maturity + planner exploration |
+| Property                           | LeWM (goal-conditioned)                         | Newt (reward-driven)                     |
+| ---------------------------------- | ----------------------------------------------- | ---------------------------------------- |
+| Learned signal of "good direction" | None (only embedding distance)                  | Q-network                                |
+| Can the agent bypass the prior?    | No — only embedding-distance scoring            | Yes — Q can subsume VLM knowledge        |
+| Is VLM contribution measurable?    | **Yes — directly**                              | Diminishes with training                 |
+| What controls SR?                  | Quality of action prior + JEPA's representation | Q-network maturity + planner exploration |
 
 **Implication:** PRISM's value is much **easier to demonstrate** in LeWM. With
 no Q-shortcut, any non-trivial improvement from a prior is unambiguous evidence

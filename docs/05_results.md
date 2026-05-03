@@ -2,12 +2,13 @@
 
 ## 5.1 Headline numbers (50 episodes, PushT, single seed)
 
-| Method | Success rate | Notes |
-|---|---|---|
-| Baseline MPPI (`solver=mppi`) | **60%** | num_samples=300, n_steps=30, horizon=5, action_block=5 |
-| **Oracle PRISM-MPPI (σ=0.1)** | **92%** | smart oracle (expert action sequence over 25 env steps) |
-| **Improvement** | **+32 pp / +53% relative** | |
-| (Reference) CEM Baseline | 96% | LeWM's default solver |
+| Method                        | Success rate               | Notes                                                   |
+| ----------------------------- | -------------------------- | ------------------------------------------------------- |
+| Baseline MPPI (`solver=mppi`) | **60%**                    | num_samples=300, n_steps=30, horizon=5, action_block=5  |
+| **Oracle PRISM-MPPI (σ=0.1)** | **92%**                    | smart oracle (expert action sequence over 25 env steps) |
+| **Improvement**               | **+32 pp / +53% relative** |                                                         |
+| (Reference) CEM Baseline      | 96%                        | LeWM's default solver                                   |
+|                               |                            |                                                         |
 
 ## 5.1b Phase 1 cross-task validation (50 episodes, σ=0.1)
 
@@ -71,12 +72,12 @@ sequences from the dataset.
 For reference, our parallel work on Newt (TDMPC2-based, reward-driven RL)
 gave on `ms-pick-spoon`:
 
-| Setting | Method | Final SR |
-|---|---|---|
-| cp=True from-scratch | Baseline | 7.5–37% |
-| cp=True from-scratch | PRISM v7e (scale=10) | 92.8% |
-| cp=False from-scratch | Baseline | 98.2 ± 0.3% |
-| cp=False from-scratch | PRISM scale=16 | 99.5% (single seed) |
+| Setting               | Method               | Final SR            |
+| --------------------- | -------------------- | ------------------- |
+| cp=True from-scratch  | Baseline             | 7.5–37%             |
+| cp=True from-scratch  | PRISM v7e (scale=10) | 92.8%               |
+| cp=False from-scratch | Baseline             | 98.2 ± 0.3%         |
+| cp=False from-scratch | PRISM scale=16       | 99.5% (single seed) |
 
 In Newt, PRISM's gain was massive in the cp=True regime (+55 pp) but tiny in
 cp=False (+1 pp). The reasons we surfaced:

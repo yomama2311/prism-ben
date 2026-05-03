@@ -15,6 +15,12 @@ from stable_worldmodel.solver import MPPISolver
 def pog_fusion(mean, std, mu_prior, sigma_prior, sigma_floor=0.05):
     """Product-of-Gaussians fusion of two Gaussians.
 
+    Note: upstream MPPISolver.init_action_distrib returns a tensor named
+    `var` but it is actually std — sampling is done as `noise * batch_var`
+    (i.e. N(mean, std²)), not `noise * sqrt(batch_var)`. We treat that
+    output as std throughout this file. PoG fusion below uses
+    precision = 1/std².
+
     Args:
         mean:        (..., A) — MPPI initial mean
         std:         (..., A) — MPPI initial std (NOT variance, despite the
@@ -40,26 +46,40 @@ def pog_fusion(mean, std, mu_prior, sigma_prior, sigma_floor=0.05):
 class PrismMPPISolver(MPPISolver):
     """MPPI with PoG fusion of an external action prior at init time.
 
-    Identical to MPPISolver if no prior is set. When a prior is set via
-    set_prior(), the initial (mean, var) of the action distribution is
-    fused with the prior using PoG.
+    Identical to MPPISolver if no prior is set OR injection_mode='none'.
+
+    injection_mode dispatch (only relevant when a prior IS set):
+      'pog'        — Product-of-Gaussians fusion of N(μ_p, σ_p · prior_sigma_scale)
+                     with planner default N(μ_default, σ_default).
+      'warm_start' — Replace planner mean with μ_p; KEEP planner default σ.
+                     Head's σ_p is intentionally IGNORED here. This is the
+                     ablation row that asks "does precision-weighting (PoG)
+                     contribute beyond simple mean substitution?". If results
+                     match 'pog', PoG isn't earning its keep.
+      'none'       — Bypass any fusion (sanity reproduction of upstream).
 
     Args:
-        sigma_floor: minimum std after fusion
-        prior_sigma_scale: multiplier on sigma_prior. Acts like vlm_sigma_scale
-                            in PRISM — larger values reduce prior influence.
+        sigma_floor:       minimum std after fusion
+        prior_sigma_scale: multiplier on σ_p (only used by 'pog')
+        injection_mode:    one of {'pog', 'warm_start', 'none'}
     """
+
+    VALID_MODES = ('pog', 'warm_start', 'none')
 
     def __init__(
         self,
         *args,
         sigma_floor: float = 0.05,
         prior_sigma_scale: float = 1.0,
+        injection_mode: str = 'pog',
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
+        assert injection_mode in self.VALID_MODES, \
+            f"injection_mode must be one of {self.VALID_MODES}, got {injection_mode!r}"
         self.sigma_floor = sigma_floor
         self.prior_sigma_scale = prior_sigma_scale
+        self.injection_mode = injection_mode
         self._prior_mean = None   # (n_envs, horizon, action_dim) tensor
         self._prior_sigma = None  # same shape; absolute units (already scaled)
 
@@ -89,23 +109,35 @@ class PrismMPPISolver(MPPISolver):
         self._prior_sigma = None
 
     def init_action_distrib(self, actions: torch.Tensor | None = None):
-        """Initialize action distribution; apply PoG fusion if a prior is set."""
+        """Initialize action distribution; dispatch on injection_mode."""
         mean, std = super().init_action_distrib(actions)
 
-        if self._prior_mean is not None and self._prior_sigma is not None and not getattr(self, '_disable_fusion', False):
-            # Move to same device as mean
-            mu_p = self._prior_mean.to(mean.device, dtype=mean.dtype)
+        # Fast bypass: no prior set, OR mode='none' → byte-identical to upstream.
+        if self._prior_mean is None or self.injection_mode == 'none':
+            return mean, std
+
+        mu_p = self._prior_mean.to(mean.device, dtype=mean.dtype)
+        if mu_p.shape != mean.shape:
+            mu_p = mu_p.expand_as(mean)
+
+        if self.injection_mode == 'warm_start':
+            # ABLATION ROW: head's σ_p is INTENTIONALLY UNUSED here. We replace
+            # the planner's initial mean with the prior mean but keep the planner's
+            # default std. If the eval result for warm_start ≈ pog, then PoG's
+            # precision-weighting contributes nothing beyond simple mean
+            # substitution. The head still computed σ — we just throw it away.
+            return mu_p, std
+
+        elif self.injection_mode == 'pog':
+            assert self._prior_sigma is not None, "pog mode requires σ_p (set_prior with sigma)"
             sg_p = self._prior_sigma.to(std.device, dtype=std.dtype)
-
-            # Broadcast / shape-check
-            if mu_p.shape != mean.shape:
-                # Expand if shapes are broadcastable
-                mu_p = mu_p.expand_as(mean)
+            if sg_p.shape != std.shape:
                 sg_p = sg_p.expand_as(std)
-
             mean, std = pog_fusion(mean, std, mu_p, sg_p, self.sigma_floor)
+            return mean, std
 
-        return mean, std
+        # Should be unreachable due to the constructor assertion.
+        raise RuntimeError(f"Unknown injection_mode: {self.injection_mode!r}")
 
 
 def vlm_influence(std: torch.Tensor, sigma_prior: torch.Tensor) -> torch.Tensor:
