@@ -90,24 +90,18 @@ def fig_world_model_loop():
 
 
 def fig_three_existing_priors():
-    """Three existing approaches — show the ACTUAL sampling distribution each uses."""
-    fig, axes = plt.subplots(1, 3, figsize=(14, 4.5))
+    """Two existing approaches that take a prior — same σ, different μ."""
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))
 
-    # Same σ across all three (none of them adapt σ from priors).
-    # Different μ → that's the only thing that differs.
+    # Same σ across both (warm-start drops σ_p, so the planner's σ wins).
     sigma = 0.9
     panels = [
         ("Vanilla MPPI",
          0.0,
          "$\\mathcal{N}(0,\\,\\sigma_{MPPI}^2)$",
-         "uses: nothing\nμ fixed at 0",
+         "uses: nothing\nno demo info, no warm-start",
          GREY),
-        ("Warm-start MPPI",
-         1.0,
-         "$\\mathcal{N}(\\mu_{prev},\\,\\sigma_{MPPI}^2)$",
-         "uses: previous step's plan\nno demo info",
-         "#a06a3a"),
-        ("Demo / policy prior\n(PiJEPA, VLMPC)",
+        ("Warm-start MPPI\n(PiJEPA, VLMPC; our ablation's baseline)",
          -1.6,
          "$\\mathcal{N}(\\mu_p,\\,\\sigma_{MPPI}^2)$",
          "uses: $\\mu_p$ from learned prior\n$\\mathbf{\\sigma_p}$ DISCARDED",
@@ -142,7 +136,7 @@ def fig_three_existing_priors():
         for s in ['top', 'right', 'left']: ax.spines[s].set_visible(False)
         ax.spines['bottom'].set_color('#888'); ax.spines['bottom'].set_linewidth(0.8)
 
-    fig.suptitle("All three differ only in $\\mu$. None of them use $\\sigma_p$ — even when the prior provides it.",
+    fig.suptitle("Both share the same $\\sigma_{MPPI}$. Warm-start adds $\\mu_p$ but drops $\\sigma_p$ — even when the prior provides it.",
                  fontsize=12, fontweight='bold', color="#222", y=1.02)
     plt.tight_layout()
     return _save(fig)
@@ -678,12 +672,14 @@ def build():
     # 5. The MPPI sampling distribution
     s = prs.slides.add_slide(blank)
     _add_title(s, "How does MPPI choose its sampling distribution today?")
-    _add_image(s, fig_priors, left=0.3, top=1.2, width=12.7, height=3.7)
+    _add_image(s, fig_priors, left=1.4, top=1.2, width=10.5, height=3.7)
     _add_bullets(s, [
-        (0, "Vanilla MPPI: sample from N(0, σ²I).  Zero-mean default — no demo info, no warm-start."),
-        (0, "Warm-start MPPI: sample from N(μ_prev, σ²I).  μ_prev = previous step's planner solution rolled forward."),
-        (0, "Demo / policy prior (PiJEPA, VLMPC): sample from N(μ_p, σ²I).  μ_p from a learned prior;  σ_p IS DISCARDED."),
-        (0, "→ Differ only in WHERE μ is placed.  σ is always the planner's fixed default."),
+        (0, "Vanilla MPPI: sample from N(0, σ²I).  Zero-mean default; no demo info."),
+        (0, "Warm-start MPPI: sample from N(μ_p, σ²I).  Inject the prior's mean; keep the planner's σ."),
+        (1, "This is what PiJEPA, VLMPC, and our paper's 'warm-start MPPI' baseline do."),
+        (1, "σ_p (the prior's own confidence) is thrown away even though it was computed."),
+        (0, "Aside: classical MPC also has temporal warm-start (μ ← μ_prev, last step's plan rolled forward)."),
+        (1, "Universal trick, orthogonal to demo priors; not what we mean by 'warm-start MPPI' here."),
     ], y=5.1, size=14)
     slides_meta.append(s)
 
