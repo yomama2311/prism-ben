@@ -32,6 +32,7 @@ from torchvision.transforms import v2 as transforms
 
 sys.path.insert(0, str(Path(__file__).parent))
 from prism_mppi import PrismMPPISolver  # noqa: E402
+from prism_cem import PrismCEMSolver  # noqa: E402
 from prism_head_policy import PrismHeadPolicy  # noqa: E402
 
 
@@ -119,12 +120,26 @@ def run(cfg: DictConfig):
     model.interpolate_pos_encoding = True
 
     plan_config = swm.PlanConfig(**cfg.plan_config)
+    solver_target = cfg.solver.get("_target_", "stable_worldmodel.solver.MPPISolver")
     solver_kwargs = OmegaConf.to_container(cfg.solver, resolve=True)
     solver_kwargs.pop("_target_", None)
     solver_kwargs.pop("model", None)
     # injection_mode and sigma_scale are owned by the policy; the policy
     # forwards them to the solver. Don't bake them into solver_kwargs here.
-    solver = PrismMPPISolver(model=model, **solver_kwargs)
+    if "MPPI" in solver_target:
+        solver = PrismMPPISolver(model=model, **solver_kwargs)
+    elif "CEM" in solver_target:
+        # CEMSolver doesn't accept `temperature`; strip if it leaked in via the yaml.
+        solver_kwargs.pop("temperature", None)
+        # Pass verbose=True so PrismCEMSolver logs the warm-start injection
+        # for the first solve() call — useful for the dry-run sanity check.
+        solver = PrismCEMSolver(model=model, verbose=True, **solver_kwargs)
+    else:
+        raise ValueError(
+            f"Unsupported solver target: {solver_target!r}. "
+            f"Expected an MPPI or CEM variant."
+        )
+    print(f"[eval_prism_head] solver class: {type(solver).__name__}")
 
     policy = PrismHeadPolicy(
         solver=solver,

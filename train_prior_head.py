@@ -108,6 +108,14 @@ TASKS = {
         train_ep_range=(0, 16817),
         val_ep_range=(16817, 18685),
     ),
+    "tworoom": dict(
+        h5=f"{STABLE_HOME}/tworoom.h5",
+        cache_dir=f"{STABLE_HOME}/jepa_cache/tworoom",
+        out_path="/home/yuhai/project/prism-jepa/prior_head_tworoom.pt",
+        # 10 000 episodes: train [0, 9000), val [9000, 10000)  (matching Cube split)
+        train_ep_range=(0, 9000),
+        val_ep_range=(9000, 10000),
+    ),
 }
 
 

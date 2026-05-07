@@ -19,6 +19,9 @@ env/
 .DS_Store
 Thumbs.db
 
+# LibreOffice / OpenOffice transient lockfiles
+.~lock.*#
+
 # Outputs
 outputs/
 multirun/
