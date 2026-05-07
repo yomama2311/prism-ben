@@ -206,66 +206,114 @@ def fig_asymptote():
 
 
 def fig_prism_arch():
-    """PRISM end-to-end architecture (sim version) — clean box-and-arrow diagram."""
-    fig, ax = plt.subplots(figsize=(14, 4.2))
+    """PRISM end-to-end architecture — horizontal pipeline with frozen/trained
+    annotations, world model dependency, MPPI loop internals."""
+    fig, ax = plt.subplots(figsize=(15, 6.0))
 
-    def _box(x, y, w, h, title, body, edge, fill=LIGHT_BG, lw=1.5):
+    def _box(x, y, w, h, title, body, edge, fill=LIGHT_BG, lw=1.5, body_fs=8.5,
+             title_fs=11):
         ax.add_patch(FancyBboxPatch((x, y), w, h,
             boxstyle="round,pad=0.05,rounding_size=0.12",
             linewidth=lw, edgecolor=edge, facecolor=fill))
         ax.text(x+w/2, y+h-0.12, title,
-                ha='center', va='top', fontsize=11, fontweight='bold', color=edge)
-        ax.text(x+w/2, y+0.18, body,
-                ha='center', va='bottom', fontsize=8.5, color=edge)
+                ha='center', va='top', fontsize=title_fs, fontweight='bold', color=edge)
+        ax.text(x+w/2, y+0.16, body,
+                ha='center', va='bottom', fontsize=body_fs, color=edge)
 
-    # Inputs
-    _box(0.2, 3.0, 1.6, 0.9, "$o_t$",     "current frame", PRIMARY)
-    _box(0.2, 1.6, 1.6, 0.9, "$o_g$",     "goal frame",    PRIMARY)
+    # ---- Top row: main pipeline at y_main = 4.0 ----
+    y_main = 4.0; h_main = 1.5
+
+    # Inputs (stacked)
+    _box(0.1, y_main + 0.7,  1.5, 0.8, "$o_t$", "current RGB\n224×224×3", PRIMARY,
+         body_fs=7.5, title_fs=11)
+    _box(0.1, y_main - 0.4,  1.5, 0.8, "$o_g$", "goal RGB\n224×224×3", PRIMARY,
+         body_fs=7.5, title_fs=11)
+
     # JEPA encoder (frozen)
-    _box(2.3, 1.8, 2.1, 1.9, "JEPA $h_\\psi$",
-         "frozen ViT-Tiny\n→ 192-d $z$", NEUTRAL)
-    # Prior head (trained)
-    _box(5.0, 1.8, 2.1, 1.9, "Prior head $g_\\phi$",
-         "0.5M MLP\n$\\beta$-NLL trained", PRIMARY, lw=2)
-    # PoG fusion (highlighted in green)
-    _box(7.7, 1.8, 2.1, 1.9, "PoG fusion",
-         "closed-form\nGaussian product", GREEN, fill="#e6f4ea", lw=2)
+    _box(2.0, y_main, 2.0, h_main, "JEPA $h_\\psi$",
+         "FROZEN\nViT-Tiny\n192-d output", NEUTRAL, body_fs=8)
+
+    # Prior head (trained offline, frozen at inference)
+    _box(4.7, y_main, 2.0, h_main, "Prior head $g_\\phi$",
+         "0.5M MLP\n$\\beta$-NLL trained\n(frozen at infer)", PRIMARY, body_fs=8, lw=2)
+
+    # PoG fusion (highlighted)
+    _box(7.4, y_main, 2.0, h_main, "PoG fusion",
+         "$\\Sigma_f^{-1}\\!=\\!\\Sigma_\\pi^{-1}\\!+\\!\\Sigma_p^{-1}$\n"
+         "closed-form\nzero params", GREEN, fill="#e6f4ea", lw=2, body_fs=8)
+
     # MPPI loop
-    _box(10.4, 1.8, 2.4, 1.9, "MPPI loop",
-         "draw $N$ samples\nscore via $f_\\theta$\nrefit $J$ iters", ACCENT, lw=2)
-    # MPPI default seed (below PoG)
-    _box(7.4, 0.0, 2.7, 1.0, "MPPI default seed", "$(\\mu_\\pi, \\sigma_\\pi)$", NEUTRAL)
+    _box(10.1, y_main, 2.5, h_main, "MPPI loop",
+         "$J\\!=\\!30$ iters\n$N\\!=\\!300$ samples\nfixed $\\sigma$", ACCENT, lw=2, body_fs=8)
 
-    # Arrows: o_t → JEPA, o_g → JEPA
-    ax.add_patch(FancyArrowPatch((1.8, 3.45), (2.3, 3.0),
-        arrowstyle='->', mutation_scale=14, color="#444"))
-    ax.add_patch(FancyArrowPatch((1.8, 2.05), (2.3, 2.5),
-        arrowstyle='->', mutation_scale=14, color="#444"))
+    # Output
+    ax.add_patch(FancyArrowPatch((12.6, y_main + h_main/2), (13.4, y_main + h_main/2),
+        arrowstyle='->', mutation_scale=20, color=ACCENT, linewidth=2.8))
+    ax.text(13.5, y_main + h_main/2, "$a_t$", ha='left', va='center',
+            fontsize=18, color=ACCENT, fontweight='bold')
+
+    # ---- Arrows on top row ----
+    arr = lambda x1, y1, x2, y2, c, lw: ax.add_patch(FancyArrowPatch(
+        (x1, y1), (x2, y2), arrowstyle='->', mutation_scale=16, color=c, linewidth=lw))
+
+    # o_t, o_g → JEPA
+    arr(1.6, y_main + 1.1,  2.0, y_main + h_main * 0.65, "#666", 1.3)
+    arr(1.6, 0.0 + y_main,  2.0, y_main + h_main * 0.35, "#666", 1.3)
     # JEPA → Prior head
-    ax.add_patch(FancyArrowPatch((4.4, 2.75), (5.0, 2.75),
-        arrowstyle='->', mutation_scale=16, color=PRIMARY, linewidth=1.5))
-    ax.text(4.7, 3.0, "$z_t, z_g$", ha='center', fontsize=10,
-            color=PRIMARY, fontweight='bold')
+    arr(4.0, y_main + h_main/2, 4.7, y_main + h_main/2, PRIMARY, 1.6)
+    ax.text(4.35, y_main + h_main + 0.25, "$z_t, z_g$",
+            ha='center', fontsize=11, color=PRIMARY, fontweight='bold')
     # Prior head → PoG
-    ax.add_patch(FancyArrowPatch((7.1, 2.75), (7.7, 2.75),
-        arrowstyle='->', mutation_scale=16, color=PRIMARY, linewidth=1.5))
-    ax.text(7.4, 3.0, "$(\\mu_p, \\sigma_p)$", ha='center', fontsize=10,
-            color=PRIMARY, fontweight='bold')
-    # MPPI default seed → PoG (from below)
-    ax.add_patch(FancyArrowPatch((8.7, 1.0), (8.7, 1.8),
-        arrowstyle='->', mutation_scale=14, color=NEUTRAL, linewidth=1.3))
-    # PoG → MPPI loop
-    ax.add_patch(FancyArrowPatch((9.8, 2.75), (10.4, 2.75),
-        arrowstyle='->', mutation_scale=16, color=GREEN, linewidth=2))
-    ax.text(10.1, 3.0, "$(\\mu_f, \\sigma_f)$", ha='center', fontsize=10,
-            color=GREEN, fontweight='bold')
-    # MPPI loop → action
-    ax.add_patch(FancyArrowPatch((12.8, 2.75), (13.5, 2.75),
-        arrowstyle='->', mutation_scale=18, color=ACCENT, linewidth=2.5))
-    ax.text(13.55, 2.75, "$a_t$", ha='left', va='center', fontsize=14,
-            color=ACCENT, fontweight='bold')
+    arr(6.7, y_main + h_main/2, 7.4, y_main + h_main/2, PRIMARY, 1.6)
+    ax.text(7.05, y_main + h_main + 0.25, "$(\\mu_p, \\sigma_p)$",
+            ha='center', fontsize=11, color=PRIMARY, fontweight='bold')
+    # PoG → MPPI
+    arr(9.4, y_main + h_main/2, 10.1, y_main + h_main/2, GREEN, 2.0)
+    ax.text(9.75, y_main + h_main + 0.25, "$(\\mu_f, \\sigma_f)$",
+            ha='center', fontsize=11, color=GREEN, fontweight='bold')
 
-    ax.set_xlim(0, 14.2); ax.set_ylim(-0.2, 4.2); ax.axis('off')
+    # ---- Bottom-left: MPPI default seed feeds PoG from below ----
+    _box(7.4, 2.4, 2.0, 0.95, "MPPI default seed",
+         "$\\mu_\\pi\\!=\\!0$, $\\sigma_\\pi\\!=\\!\\sigma_{MPPI}$", NEUTRAL,
+         body_fs=9, title_fs=9)
+    arr(8.4, 3.35, 8.4, y_main, NEUTRAL, 1.4)
+
+    # ---- Bottom-right: World model predictor f_θ feeds MPPI loop from below ----
+    _box(10.1, 2.4, 2.5, 0.95, "World model $f_\\theta$",
+         "FROZEN; latent rollout\n$(z_t, a_{t:t+H}) \\to \\hat z_{t+H}$",
+         NEUTRAL, body_fs=8, title_fs=9)
+    arr(11.35, 3.35, 11.35, y_main, NEUTRAL, 1.4)
+    ax.text(11.85, 3.65, "rollouts", ha='left', fontsize=8.5,
+            color=NEUTRAL, style='italic')
+
+    # ---- Bottom-far-left: offline training reminder ----
+    ax.add_patch(FancyBboxPatch((0.1, 1.0), 6.5, 1.0,
+        boxstyle="round,pad=0.05,rounding_size=0.1", linewidth=1.0,
+        edgecolor=GREY, facecolor="#fafbfc", linestyle='--'))
+    ax.text(0.25, 1.7,
+            "OFFLINE (one-time, before any planning):",
+            ha='left', va='center', fontsize=9, color=GREY, fontweight='bold')
+    ax.text(0.25, 1.3,
+            "expert demos $(o_t, o_g, a^*)$  →  cache JEPA features  →  train $g_\\phi$ via $\\beta$-NLL",
+            ha='left', va='center', fontsize=9, color="#444")
+
+    # ---- Goal → JEPA arrow inside-encoder note ----
+    # already drawn above
+
+    # ---- Legend (bottom-right, well clear of a_t output) ----
+    legend_x = 7.0; legend_y = 1.6
+    ax.text(legend_x, legend_y,
+            "Color key:", ha='left', fontsize=9, fontweight='bold', color="#222")
+    ax.text(legend_x + 1.2, legend_y, "■",  ha='left', fontsize=12, color=NEUTRAL)
+    ax.text(legend_x + 1.5, legend_y, "frozen (no gradients)", ha='left', fontsize=8.5, color="#444")
+    ax.text(legend_x + 4.0, legend_y, "■",  ha='left', fontsize=12, color=PRIMARY)
+    ax.text(legend_x + 4.3, legend_y, "trained MLP head", ha='left', fontsize=8.5, color="#444")
+    ax.text(legend_x + 1.2, legend_y - 0.35, "■",  ha='left', fontsize=12, color=GREEN)
+    ax.text(legend_x + 1.5, legend_y - 0.35, "closed-form fusion (no params)", ha='left', fontsize=8.5, color="#444")
+    ax.text(legend_x + 4.0 + 0.45, legend_y - 0.35, "■",  ha='left', fontsize=12, color=ACCENT)
+    ax.text(legend_x + 4.3 + 0.45, legend_y - 0.35, "planner / output", ha='left', fontsize=8.5, color="#444")
+
+    ax.set_xlim(-0.1, 14.4); ax.set_ylim(0.5, 6.0); ax.axis('off')
     return _save(fig)
 
 
@@ -720,12 +768,8 @@ def build():
 
     # 9. PRISM in one picture
     s = prs.slides.add_slide(blank)
-    _add_title(s, "PRISM-MPPI in one picture")
-    _add_image(s, fig_arch, left=0.3, top=1.5, width=12.7, height=3.8)
-    _add_bullets(s, [
-        (0, "Frozen JEPA encoder → small MLP prior head → PoG fusion → MPPI loop."),
-        (0, "Only the prior head is trained; everything else is the LeWM substrate."),
-    ], y=5.7, size=15)
+    _add_title(s, "PRISM-MPPI architecture")
+    _add_image(s, fig_arch, left=0.15, top=1.2, width=13.0, height=5.6)
     slides_meta.append(s)
 
     # 10. Contributions
