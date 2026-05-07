@@ -101,7 +101,7 @@ def fig_three_existing_priors():
          "$\\mathcal{N}(0,\\,\\sigma_{MPPI}^2)$",
          "uses: nothing\nno demo info, no warm-start",
          GREY),
-        ("Warm-start MPPI\n(PiJEPA, VLMPC; our ablation's baseline)",
+        ("Warm-start MPPI\n(VLMPC, our ablation's baseline)",
          -1.6,
          "$\\mathcal{N}(\\mu_p,\\,\\sigma_{MPPI}^2)$",
          "uses: $\\mu_p$ from learned prior\n$\\mathbf{\\sigma_p}$ DISCARDED",
@@ -676,8 +676,8 @@ def build():
     _add_bullets(s, [
         (0, "Vanilla MPPI: sample from N(0, σ²I).  Zero-mean default; no demo info."),
         (0, "Warm-start MPPI: sample from N(μ_p, σ²I).  Inject the prior's mean; keep the planner's σ."),
-        (1, "This is what PiJEPA, VLMPC, and our paper's 'warm-start MPPI' baseline do."),
-        (1, "σ_p (the prior's own confidence) is thrown away even though it was computed."),
+        (1, "VLMPC and our paper's 'warm-start MPPI' baseline do this — μ_p is used, σ_p (or hand-set) is dropped."),
+        (1, "PiJEPA does something different: empirical μ_p AND σ_p from N_π diffusion samples, replaces the seed (see slide 13)."),
         (0, "Aside: classical MPC also has temporal warm-start (μ ← μ_prev, last step's plan rolled forward)."),
         (1, "Universal trick, orthogonal to demo priors; not what we mean by 'warm-start MPPI' here."),
     ], y=5.1, size=14)
@@ -762,31 +762,76 @@ def build():
 
     # 13. PiJEPA — the closest substrate match
     s = prs.slides.add_slide(blank)
-    _add_title(s, "PiJEPA — closest substrate, different fusion")
+    _add_title(s, "PiJEPA — closest substrate, replacement vs fusion")
+    _add_subtitle(s, "Chahe & Zhou 2026.03 (Drexel) — JEPA + MPPI for language-conditioned visual navigation")
+
+    rows = [
+        ["Aspect", "PiJEPA", "PRISM (ours)"],
+        ["Prior architecture",
+         "fine-tuned Octo diffusion policy",
+         "0.5M MLP head on cached JEPA features"],
+        ["Inference cost per env step",
+         "N_π diffusion-policy forwards (slow)",
+         "1 MLP forward (~ms)"],
+        ["Prior σ source",
+         "empirical std of N_π samples",
+         "direct MLP output, β-NLL trained"],
+        ["How prior meets MPPI seed",
+         "REPLACES:  (μ⁰, σ⁰)  →  MPPI init",
+         "FUSES via closed-form PoG with (μ_π, σ_π)"],
+        ["Asymptote when prior uninformative",
+         "no fallback (always replaces)",
+         "σ_p → ∞   ⇒   vanilla MPPI exactly"],
+        ["σ refit during MPPI iterations",
+         "yes (CEM-style, Alg. line 21)",
+         "no (LeWM substrate);  σ_fused persists"],
+        ["Task domain",
+         "visual navigation",
+         "visual manipulation"],
+    ]
+    table = s.shapes.add_table(rows=len(rows), cols=3,
+                                left=Inches(0.4), top=Inches(1.6),
+                                width=Inches(12.5), height=Inches(4.7)).table
+    # column widths
+    table.columns[0].width = Inches(3.0)
+    table.columns[1].width = Inches(4.5)
+    table.columns[2].width = Inches(5.0)
+    for j, h in enumerate(rows[0]):
+        cell = table.cell(0, j); cell.text = h
+        cell.fill.solid(); cell.fill.fore_color.rgb = (
+            PRIMARY_RGB if j != 2 else GREEN_RGB)
+        for p in cell.text_frame.paragraphs:
+            for r in p.runs:
+                r.font.bold = True; r.font.color.rgb = WHITE_RGB; r.font.size = Pt(13)
+    for i, row in enumerate(rows[1:], 1):
+        for j, val in enumerate(row):
+            cell = table.cell(i, j); cell.text = val
+            for p in cell.text_frame.paragraphs:
+                for r in p.runs:
+                    r.font.size = Pt(11)
+                    if j == 0:
+                        r.font.bold = True; r.font.color.rgb = NEUTRAL_RGB
+                    elif j == 2:
+                        r.font.color.rgb = GREEN_RGB
+
     _add_bullets(s, [
-        (0, "Chahe & Zhou 2026.03 (Drexel): JEPA-based world-model planning + MPPI + a fine-tuned Octo policy as prior."),
-        (0, "Same JEPA + MPPI substrate as us. Different fusion."),
-        (0, "PiJEPA's choice: warm-start.  μ_MPPI ← μ_policy.  Discards σ_p."),
-        (0, "Our differentiation, on two complementary axes:"),
-        (1, "Fusion algebra: PoG retains σ_p, automatic precision weighting, asymptote guarantee."),
-        (1, "Task domain: PiJEPA = visual navigation; we = visual manipulation."),
-        (0, "Our PushT result is a direct empirical case where warm-start would fail and PoG survives."),
-    ], y=1.3, size=18)
+        (0, "Both use μ AND σ from a learned prior. Differences = HOW prior is computed and HOW it meets the planner."),
+    ], y=6.5, size=13)
     slides_meta.append(s)
 
     # 14. VLMPC
     s = prs.slides.add_slide(blank)
     _add_title(s, "VLMPC (Wang+ RSS 2024)")
     _add_bullets(s, [
-        (0, "VLM (e.g. GPT-4V) provides a low-dim Gaussian action prior at every env step."),
-        (0, "TD-MPC2 + MPPI substrate; mean-only injection."),
+        (0, "VLM (e.g. GPT-4V) outputs a low-dim Gaussian action mean at every env step; σ is hand-tuned."),
+        (0, "TD-MPC2 + MPPI substrate; replaces the planner's seed with (μ_VLM, σ_handset)."),
         (0, "Validated on simulated and real UR5 manipulation tasks."),
         (0, "Our differentiation, three axes:"),
-        (1, "σ — VLMPC hand-sets it; we learn it via β-NLL."),
-        (1, "Compute — VLMPC calls VLM each env step (heavy); we use a 0.5M MLP on cached JEPA features."),
-        (1, "Fusion — VLMPC drops σ; we contribute closed-form Gaussian fusion."),
+        (1, "σ source — VLMPC hand-sets it (not state-conditional); PRISM learns it via β-NLL on demos."),
+        (1, "Compute — VLMPC calls VLM each env step (heavy); PRISM uses a 0.5M MLP on cached JEPA features."),
+        (1, "Combination — VLMPC replaces seed; PRISM fuses with planner default via closed-form PoG (asymptote guarantee)."),
         (0, "PRISM's PoG form is independent of where the prior comes from — VLM-derived priors are a future extension."),
-    ], y=1.3, size=18)
+    ], y=1.3, size=17)
     slides_meta.append(s)
 
     # 15. Biased-MPPI
@@ -808,18 +853,18 @@ def build():
     s = prs.slides.add_slide(blank)
     _add_title(s, "Positioning — where PRISM sits in the design space")
     _add_bullets(s, [
-        (0, "Mean-only injection (warm-start, PiJEPA, VLMPC):"),
-        (1, "Simple. Gracefully passes when prior is good. Fails when prior μ is bad."),
-        (1, "No σ-handling, no asymptote guarantee."),
+        (0, "Replacement-style prior injection (warm-start, PiJEPA, VLMPC):"),
+        (1, "Prior overwrites the planner's seed entirely. Different methods compute the prior differently:"),
+        (1, "VLMPC: μ_p from VLM, σ hand-set.  Warm-start MPPI / our ablation: μ_p from MLP, σ_p discarded."),
+        (1, "PiJEPA: empirical (μ^0, σ^0) from N_π diffusion-policy samples (uses σ, but still replaces planner default)."),
+        (1, "Common limitation: NO asymptote guarantee — even an uninformative prior overwrites the seed."),
         (0, "KL-bias / importance-sampling general (Biased-MPPI):"),
-        (1, "Mathematically general but no closed-form Gaussian instance."),
-        (1, "Evaluated only on low-dim state-space."),
+        (1, "Mathematically general but no closed-form Gaussian instance. Low-dim state-space evaluation only."),
         (0, "PRISM-PoG (ours):"),
-        (1, "Closed-form Gaussian fusion."),
-        (1, "Asymptote guarantee for free."),
-        (1, "Per-state precision weighting from the head's own σ_p."),
-        (1, "Empirically validates on visual manipulation across two very different sims."),
-    ], y=1.3, size=17)
+        (1, "Closed-form Gaussian fusion (NOT replacement) of planner default with learned prior."),
+        (1, "Asymptote guarantee for free.  Per-state precision weighting from the head's own σ_p."),
+        (1, "Parameter-efficient prior (~0.5M MLP, no diffusion sampling at inference)."),
+    ], y=1.3, size=15)
     slides_meta.append(s)
 
     # ============ §3 Method ============
