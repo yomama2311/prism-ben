@@ -90,39 +90,60 @@ def fig_world_model_loop():
 
 
 def fig_three_existing_priors():
-    """Three existing approaches and what they all discard."""
-    fig, axes = plt.subplots(1, 3, figsize=(13, 4))
-    titles = ["Vanilla MPPI", "Warm-start", "Demo / policy prior"]
-    descs = [
-        "$\\mu = 0$\n\nzero info, but\nno bias",
-        "$\\mu \\leftarrow \\mu_{prev}$\n\nrolls plan forward,\nignores demos",
-        "$\\mu \\leftarrow \\pi(z)$\n\nuses demo mean,\n$\\sigma$ thrown away"]
-    colors = [GREY, GREY, GREY]
-    for ax, title, desc, c in zip(axes, titles, descs, colors):
-        # Draw a Gaussian centered at 0 — the planner default
-        x = np.linspace(-3, 3, 100)
-        for mu, sigma, lbl, col, alpha, ls in [
-                (0, 1.2, "planner $\\mathcal{N}(\\mu, \\sigma)$", PRIMARY, 0.7, "-"),
-        ]:
-            y = np.exp(-(x-mu)**2 / (2*sigma**2)) / (sigma*np.sqrt(2*np.pi))
-            ax.fill_between(x, 0, y, alpha=alpha*0.4, color=col)
-            ax.plot(x, y, color=col, linewidth=1.5)
-        # Show what gets injected
-        if "Warm-start" in title:
-            mu_p = 0.8
-            ax.axvline(mu_p, color=ACCENT, linewidth=2, linestyle='--')
-            ax.text(mu_p+0.1, 0.34, "$\\mu_p$", fontsize=14, color=ACCENT)
-        elif "Demo" in title:
-            mu_p = -1.0
-            ax.axvline(mu_p, color=ACCENT, linewidth=2, linestyle='--')
-            ax.text(mu_p-0.7, 0.34, "$\\mu_p$\n(no $\\sigma$)", fontsize=11, color=ACCENT)
-        ax.set_title(title, fontsize=12, fontweight='bold')
-        ax.text(0, -0.08, desc, ha='center', va='top', fontsize=10,
-                transform=ax.transAxes, color="#444")
-        ax.set_ylim(0, 0.4); ax.set_xlim(-3, 3); ax.set_xticks([]); ax.set_yticks([])
-        for spine in ax.spines.values(): spine.set_visible(False)
-    fig.suptitle("All three discard the same thing: state-conditional confidence",
-                 fontsize=12, fontweight='bold', color=ACCENT, y=1.02)
+    """Three existing approaches — show the ACTUAL sampling distribution each uses."""
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4.5))
+
+    # Same σ across all three (none of them adapt σ from priors).
+    # Different μ → that's the only thing that differs.
+    sigma = 0.9
+    panels = [
+        ("Vanilla MPPI",
+         0.0,
+         "$\\mathcal{N}(0,\\,\\sigma_{MPPI}^2)$",
+         "uses: nothing\nμ fixed at 0",
+         GREY),
+        ("Warm-start MPPI",
+         1.0,
+         "$\\mathcal{N}(\\mu_{prev},\\,\\sigma_{MPPI}^2)$",
+         "uses: previous step's plan\nno demo info",
+         "#a06a3a"),
+        ("Demo / policy prior\n(PiJEPA, VLMPC)",
+         -1.6,
+         "$\\mathcal{N}(\\mu_p,\\,\\sigma_{MPPI}^2)$",
+         "uses: $\\mu_p$ from learned prior\n$\\mathbf{\\sigma_p}$ DISCARDED",
+         ACCENT),
+    ]
+
+    x = np.linspace(-4, 4, 200)
+    for ax, (name, mu, formula, info, color) in zip(axes, panels):
+        # The actual sampling distribution this method uses
+        y = np.exp(-(x-mu)**2 / (2*sigma**2)) / (sigma*np.sqrt(2*np.pi))
+        ax.fill_between(x, 0, y, alpha=0.45, color=color)
+        ax.plot(x, y, color=color, linewidth=2.2)
+        # Mark the mean with a vertical drop line
+        peak_y = 1/(sigma*np.sqrt(2*np.pi))
+        ax.plot([mu, mu], [0, peak_y], color=color, linestyle=':', linewidth=1.5)
+        ax.text(mu, peak_y + 0.02, f"$\\mu={mu}$" if mu != 0 else "$\\mu=0$",
+                ha='center', fontsize=10, color=color, fontweight='bold')
+
+        # Reference: where μ=0 is (vanilla anchor)
+        if mu != 0:
+            ax.axvline(0, color="#bbb", linewidth=0.8, linestyle='-', zorder=0)
+
+        ax.set_title(name, fontsize=12, fontweight='bold', color=color, pad=8)
+        # Formula above the curve, info below
+        ax.text(0.5, 0.93, formula, ha='center', va='top', fontsize=12,
+                transform=ax.transAxes, color="#222")
+        ax.text(0.5, -0.06, info, ha='center', va='top', fontsize=10,
+                transform=ax.transAxes, color=color, style='italic')
+
+        ax.set_ylim(0, peak_y * 1.35); ax.set_xlim(-4, 4)
+        ax.set_xticks([]); ax.set_yticks([])
+        for s in ['top', 'right', 'left']: ax.spines[s].set_visible(False)
+        ax.spines['bottom'].set_color('#888'); ax.spines['bottom'].set_linewidth(0.8)
+
+    fig.suptitle("All three differ only in $\\mu$. None of them use $\\sigma_p$ — even when the prior provides it.",
+                 fontsize=12, fontweight='bold', color="#222", y=1.02)
     plt.tight_layout()
     return _save(fig)
 
@@ -657,12 +678,13 @@ def build():
     # 5. The MPPI sampling distribution
     s = prs.slides.add_slide(blank)
     _add_title(s, "How does MPPI choose its sampling distribution today?")
-    _add_image(s, fig_priors, left=0.5, top=1.3, width=12.3, height=4.0)
+    _add_image(s, fig_priors, left=0.3, top=1.2, width=12.7, height=3.7)
     _add_bullets(s, [
-        (0, "All three approaches share one limitation:"),
-        (1, "they replace only the mean — and discard how confident the demonstration is at this state."),
-        (0, "But that confidence is exactly what matters for a sampling distribution."),
-    ], y=5.5, size=16)
+        (0, "Vanilla MPPI: sample from N(0, σ²I).  Zero-mean default — no demo info, no warm-start."),
+        (0, "Warm-start MPPI: sample from N(μ_prev, σ²I).  μ_prev = previous step's planner solution rolled forward."),
+        (0, "Demo / policy prior (PiJEPA, VLMPC): sample from N(μ_p, σ²I).  μ_p from a learned prior;  σ_p IS DISCARDED."),
+        (0, "→ Differ only in WHERE μ is placed.  σ is always the planner's fixed default."),
+    ], y=5.1, size=14)
     slides_meta.append(s)
 
     # 6. Our framing
