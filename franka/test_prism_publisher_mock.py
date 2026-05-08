@@ -136,7 +136,13 @@ def main() -> int:
     t0 = time.time()
     period = 1.0 / args.update_hz
     n_updates = 0
-    n_log = 0
+    last_log_t = -1.0
+
+    # Peak-to-peak trackers (init from initial values)
+    target_y_min = float(init_xyz[1])
+    target_y_max = float(init_xyz[1])
+    robot_y_min  = float(init_state.O_T_EE[13])
+    robot_y_max  = float(init_state.O_T_EE[13])
 
     print(f"\n[test] starting {args.duration:.1f}s loop at {args.update_hz} Hz update rate...\n")
 
@@ -147,8 +153,9 @@ def main() -> int:
         if args.mode == "hold":
             target_xyz = init_xyz.copy()
         elif args.mode == "hover":
-            # ±2.5 mm in y, 1 Hz oscillation
-            dy = 0.0025 * np.sin(2 * np.pi * 1.0 * t)
+            # ±2.5 mm in y, 0.5 Hz oscillation (period = 2 s, so log at 0.2 s
+            # never aliases with zero-crossings)
+            dy = 0.0025 * np.sin(2 * np.pi * 0.5 * t)
             target_xyz = init_xyz + np.array([0.0, dy, 0.0])
         elif args.mode == "line":
             # ±2.5 cm in y, period = 10 s (slow)
@@ -160,14 +167,21 @@ def main() -> int:
         info = pub.set_target_pose(target_xyz, init_q)
         n_updates += 1
 
-        # Log once per second
-        if int(t) > n_log:
-            n_log = int(t)
-            cur_target = pub.get_current_target()[0]
-            cur_state = pub.get_robot_state()
-            cur_robot = (np.array([cur_state.O_T_EE[12], cur_state.O_T_EE[13], cur_state.O_T_EE[14]])
-                         if cur_state is not None else np.array([np.nan]*3))
-            err = float(np.linalg.norm(cur_target - cur_robot))
+        # ── Track global peak-to-peak for end-of-run summary ──
+        cur_target = pub.get_current_target()[0]
+        cur_state = pub.get_robot_state()
+        cur_robot = (np.array([cur_state.O_T_EE[12], cur_state.O_T_EE[13], cur_state.O_T_EE[14]])
+                     if cur_state is not None else None)
+        target_y_min = min(target_y_min, float(cur_target[1]))
+        target_y_max = max(target_y_max, float(cur_target[1]))
+        if cur_robot is not None:
+            robot_y_min = min(robot_y_min, float(cur_robot[1]))
+            robot_y_max = max(robot_y_max, float(cur_robot[1]))
+
+        # ── Log every 0.2 s (5 Hz log rate, finer than the 0.5 Hz oscillation) ──
+        if t - last_log_t >= 0.2 - 1e-6:
+            last_log_t = t
+            err = float(np.linalg.norm(cur_target - cur_robot)) if cur_robot is not None else float("nan")
             mode_str = (
                 "MOVE" if cur_state and cur_state.robot_mode == ROBOT_MODE_MOVE else
                 "IDLE" if cur_state and cur_state.robot_mode == ROBOT_MODE_IDLE else
@@ -182,10 +196,12 @@ def main() -> int:
             if info["rotation_clipped"]:
                 cflags.append("rot_clip")
             cflag_str = ",".join(cflags) if cflags else "-"
+            # Use 4-decimal precision on y so we see sub-mm motion clearly
+            cur_robot_y = cur_robot[1] if cur_robot is not None else float("nan")
             print(f"  t={t:5.1f}s  "
-                  f"target=({cur_target[0]:+.3f}, {cur_target[1]:+.3f}, {cur_target[2]:+.3f})  "
-                  f"robot=({cur_robot[0]:+.3f}, {cur_robot[1]:+.3f}, {cur_robot[2]:+.3f})  "
-                  f"err={err*1000:5.1f}mm  "
+                  f"target_y={cur_target[1]:+.4f}m  "
+                  f"robot_y={cur_robot_y:+.4f}m  "
+                  f"err={err*1000:5.2f}mm  "
                   f"mode={mode_str}  "
                   f"clip={cflag_str}")
 
@@ -194,6 +210,17 @@ def main() -> int:
     # ── summary ──
     print(f"\n[test] done. {n_updates} target updates over {time.time() - t0:.1f}s "
           f"({n_updates / max(1.0, time.time() - t0):.1f} Hz effective).")
+
+    target_pp = (target_y_max - target_y_min) * 1000  # mm
+    robot_pp  = (robot_y_max  - robot_y_min)  * 1000  # mm
+    print(f"[test] target y peak-to-peak: {target_pp:.2f} mm   "
+          f"(min={target_y_min:+.4f}, max={target_y_max:+.4f})")
+    print(f"[test] robot  y peak-to-peak: {robot_pp:.2f} mm   "
+          f"(min={robot_y_min:+.4f}, max={robot_y_max:+.4f})")
+    if args.mode != "hold" and target_pp > 0.5:
+        ratio = robot_pp / target_pp if target_pp > 1e-9 else 0.0
+        print(f"[test] tracking ratio (robot_pp / target_pp) = {ratio:.2f}  "
+              f"({'good — robot tracking' if ratio > 0.3 else 'low — over-damped or rate-limited'})")
 
     final_state = pub.get_robot_state()
     if final_state is not None:
