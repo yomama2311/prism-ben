@@ -53,6 +53,14 @@ from prism_publisher import (
     _rotation_matrix_to_quat,
 )
 
+
+# =============================================================================
+# Franka canonical home pose (from joint config [0, -π/4, 0, -3π/4, 0, π/2, π/4])
+# Measured EE position from hello_robot.py on this lab's Franka. Override via
+# --home-xyz CLI flag if your lab's robot has a different effector tool offset.
+# =============================================================================
+FRANKA_HOME_XYZ = np.array([0.306, 0.000, 0.484], dtype=np.float64)
+
 # Reuse the slew helper from the keyboard teleop
 from test_prism_publisher_keyboard import slew_to
 
@@ -99,8 +107,10 @@ class ControllerState:
     pose: np.ndarray         # 4x4 transform (headset frame)
     trigger: float           # [0..1]
     grip: float              # [0..1]
+    grip_just_pressed: bool       # rising edge of grip > 0.5
     button_a_just_pressed: bool   # rising edge
     button_b_just_pressed: bool   # rising edge
+    rj_just_pressed: bool         # right joystick click rising edge — soft reset
     valid: bool              # False if controller not detected
 
 
@@ -116,7 +126,9 @@ class QuestSource:
 class OculusReaderSource(QuestSource):
     """Real Quest controller via oculus_reader / ADB."""
 
-    def __init__(self, hand: str = "r"):
+    APK_PACKAGE = "com.rail.oculus.teleop"
+
+    def __init__(self, hand: str = "r", force_restart_apk: bool = True):
         try:
             from oculus_reader import OculusReader
         except ImportError as e:
@@ -126,13 +138,37 @@ class OculusReaderSource(QuestSource):
             ) from e
 
         self.hand = hand
+
+        # The streaming APK on the Quest occasionally gets stuck in a state
+        # where it has a PID but isn't pushing any controller data
+        # (transforms == {}, buttons == {}). Force-restart it on every session
+        # init to dodge this — adds ~2 s of startup latency but is reliable.
+        if force_restart_apk:
+            self._restart_apk()
+
         self.reader = OculusReader()
         # OculusReader.run() launches an ADB-streaming thread internally
         self.reader.run()
-        time.sleep(1.0)  # let the ADB connection settle
+        time.sleep(2.0)  # let the ADB connection + APK warm up
 
         self._prev_a = False
         self._prev_b = False
+        self._prev_rj = False
+
+    def _restart_apk(self):
+        """Force-stop and re-launch the controller-streaming APK on the Quest."""
+        import subprocess
+        try:
+            subprocess.run(
+                ["adb", "shell", "am", "force-stop", self.APK_PACKAGE],
+                check=False, timeout=5, capture_output=True)
+            subprocess.run(
+                ["adb", "shell", "am", "start", "-n",
+                 f"{self.APK_PACKAGE}/.MainActivity"],
+                check=False, timeout=5, capture_output=True)
+            time.sleep(1.0)
+        except Exception as e:
+            print(f"[oculus_reader] APK restart raised {e!r} — continuing anyway")
 
     def read(self) -> ControllerState:
         # oculus_reader API: get_transformations_and_buttons() → (transforms, buttons)
@@ -143,7 +179,9 @@ class OculusReaderSource(QuestSource):
         if not transforms or self.hand not in transforms:
             return ControllerState(
                 pose=np.eye(4), trigger=0.0, grip=0.0,
+                grip_just_pressed=False,
                 button_a_just_pressed=False, button_b_just_pressed=False,
+                rj_just_pressed=False,
                 valid=False)
 
         pose = np.asarray(transforms[self.hand], dtype=np.float64)
@@ -170,17 +208,24 @@ class OculusReaderSource(QuestSource):
         # Buttons (booleans) — some versions use lowercase, some bool-typed
         a_now = bool(buttons.get(a_key, False))
         b_now = bool(buttons.get(b_key, False))
+        rj_now = bool(buttons.get("RJ" if self.hand == "r" else "LJ", False))
+        grip_now = float(grip_val) > 0.5
 
         a_edge = a_now and not self._prev_a
         b_edge = b_now and not self._prev_b
+        rj_edge = rj_now and not getattr(self, "_prev_rj", False)
+        grip_edge = grip_now and not getattr(self, "_prev_grip", False)
         self._prev_a, self._prev_b = a_now, b_now
+        self._prev_rj, self._prev_grip = rj_now, grip_now
 
         return ControllerState(
             pose=pose,
             trigger=float(trig_val),
             grip=float(grip_val),
+            grip_just_pressed=grip_edge,
             button_a_just_pressed=a_edge,
             button_b_just_pressed=b_edge,
+            rj_just_pressed=rj_edge,
             valid=True)
 
     def shutdown(self):
@@ -212,7 +257,9 @@ class MockQuestSource(QuestSource):
             self._grip_armed = True
         return ControllerState(
             pose=pose, trigger=self._trigger, grip=grip,
+            grip_just_pressed=False,
             button_a_just_pressed=False, button_b_just_pressed=False,
+            rj_just_pressed=False,
             valid=True)
 
 
@@ -264,17 +311,22 @@ class QuestTeleop:
                     time.sleep(period)
                     continue
 
-                # ── Origin calibration ──
-                if cs.grip > 0.5:
+                # ── Origin calibration (only on grip rising-edge) ──
+                if cs.grip_just_pressed:
                     self._set_origin_from(cs.pose)
 
-                # ── A: toggle demo record ──
+                # ── A: re-set "home" to robot's CURRENT EE pose ──
                 if cs.button_a_just_pressed:
-                    self._toggle_recording()
+                    self._set_home_to_current_ee()
 
-                # ── B: home ──
+                # ── B: home (full slew back to initial pose) — also auto-sets
+                #    origin so trigger works immediately afterward
                 if cs.button_b_just_pressed:
-                    self._home()
+                    self._home(controller_pose=cs.pose)
+
+                # ── RJ click: soft reset (target → current robot, clear origin) ──
+                if cs.rj_just_pressed:
+                    self._soft_reset()
 
                 # ── Trigger: deadman; only follow when held ──
                 if cs.trigger > 0.5 and self._origin_quest_xyz is not None:
@@ -290,17 +342,28 @@ class QuestTeleop:
             print("\n[quest] Ctrl-C")
 
     def _set_origin_from(self, pose: np.ndarray):
+        """Bind the controller's CURRENT pose to Franka's INITIAL home pose.
+
+        Pressing grip = "controller-where-it-is-right-now is the new (0,0,0),
+        mapped to Franka's default home pose (where the robot was when we
+        launched this script)."
+
+        This makes grip a clean reset operation regardless of where the robot
+        has drifted to. The robot does NOT move here; it'll only move once
+        trigger is held — at which point the target slews from the current
+        position back to init_xyz (rate-limited), and then tracks controller
+        delta from there.
+        """
         new_origin = pose[:3, 3].copy()
         if self._origin_quest_xyz is None or \
            not np.allclose(new_origin, self._origin_quest_xyz, atol=1e-6):
-            cur_xyz, _ = self.pub.get_current_target()
             self._origin_quest_xyz = new_origin
-            self._origin_franka_xyz = cur_xyz.copy()
+            self._origin_franka_xyz = self.init_xyz.copy()  # ALWAYS Franka home
             if self.verbose:
                 print(f"\n[quest] origin set: quest=({new_origin[0]:+.3f},"
                       f" {new_origin[1]:+.3f}, {new_origin[2]:+.3f})  "
-                      f"→ franka EE held at "
-                      f"({cur_xyz[0]:+.3f}, {cur_xyz[1]:+.3f}, {cur_xyz[2]:+.3f})")
+                      f"→ franka HOME ({self.init_xyz[0]:+.3f}, "
+                      f"{self.init_xyz[1]:+.3f}, {self.init_xyz[2]:+.3f})")
 
     def _update_target_from(self, controller_pose: np.ndarray):
         controller_xyz = controller_pose[:3, 3]
@@ -311,22 +374,77 @@ class QuestTeleop:
         self.pub.set_target_pose(target_xyz, self.init_quat)
 
     def _toggle_recording(self):
+        # NOTE: temporarily unbound — A button now does _set_home_to_current_ee
+        # below. Once we add real h5 demo recording, re-bind this to a
+        # different button (likely RThU or wire a left-hand button).
         self._recording = not self._recording
         if self._recording:
             self._n_recorded_episodes += 1
             print(f"\n[quest] ▶ START recording demo #{self._n_recorded_episodes}")
         else:
             print(f"\n[quest] ⏹ STOP  recording demo #{self._n_recorded_episodes}")
-        # TODO: actually start/stop a DemoRecorder thread that subscribes to
-        # camera + state topics, accumulates frames, saves h5 on stop.
 
-    def _home(self):
+    def _set_home_to_current_ee(self):
+        """Replace the 'home' pose with wherever the robot's EE is right now.
+
+        Use this when init_xyz captured at script start was a bad home
+        (e.g. robot was in some leftover pose from a previous test).
+        Workflow: use trigger to move robot to a good PushT home pose →
+        release trigger → press A. From then on, grip / B / auto-home all
+        target this new pose.
+        """
+        ee = self.pub.get_robot_ee()
+        if ee is None:
+            print("\n[quest] set-home: no FrankaState — skipping")
+            return
+        new_xyz, new_q = ee
+        self.init_xyz = new_xyz.copy()
+        self.init_quat = new_q.copy()
+        # Also clear origin so user must press grip again before next teleop
+        # (otherwise the old origin would map back to old home).
+        self._origin_quest_xyz = None
+        self._origin_franka_xyz = None
+        print(f"\n[quest] new HOME set to current EE: "
+              f"({new_xyz[0]:+.3f}, {new_xyz[1]:+.3f}, {new_xyz[2]:+.3f}); "
+              f"press GRIP to re-anchor controller")
+
+    def _home(self, controller_pose: np.ndarray | None = None):
+        """Slew the robot back to init_xyz, then auto-set origin to the
+        controller's current pose (so user can press trigger immediately
+        after B without needing to also press grip).
+        """
         print("\n[quest] homing back to initial pose...")
         outcome = slew_to(self.pub, self.init_xyz, self.init_quat)
         print(f"[quest] home: {outcome}")
-        # After homing, force a re-origin on next grip press
+        # Auto-bind origin to current controller pose → init_xyz so trigger
+        # works right after B without needing a grip press
+        if controller_pose is not None:
+            self._origin_quest_xyz = controller_pose[:3, 3].copy()
+            self._origin_franka_xyz = self.init_xyz.copy()
+            print(f"[quest] origin auto-set after home → controller-here ↔ HOME")
+        else:
+            self._origin_quest_xyz = None
+            self._origin_franka_xyz = None
+
+    def _soft_reset(self):
+        """Snap published target onto the robot's current EE pose, clear origin.
+
+        Use this when:
+          - the target has drifted far from the robot (large err_mm in status)
+          - WS_clip is firing repeatedly because target is past workspace edge
+          - the controller / Quest tracking has glitched and you want a clean
+            restart without slewing the robot all the way back to home.
+
+        Does NOT move the robot — target snaps to current EE = controller "stays
+        where it is".
+        """
+        ok = self.pub.reset_target_to_current()
+        # Clear origin so user must press grip again before the next motion
         self._origin_quest_xyz = None
         self._origin_franka_xyz = None
+        print(f"\n[quest] soft reset: target snapped to current robot EE "
+              f"({'OK' if ok else 'FAILED — no robot state'}); "
+              f"press GRIP to re-set origin before next teleop")
 
     def _log_status(self, cs: ControllerState):
         target_xyz, _ = self.pub.get_current_target()
@@ -361,6 +479,13 @@ def main() -> int:
     ap.add_argument("--duration", type=float, default=600.0)
     ap.add_argument("--max-translation", type=float, default=0.02,
                     help="Per-call rate limit (m); raise if scale > 1")
+    ap.add_argument("--home-xyz", type=float, nargs=3, metavar=("X", "Y", "Z"),
+                    default=None,
+                    help=f"Override home pose XYZ in panda_link0 (meters). "
+                         f"Default = canonical Franka home {tuple(FRANKA_HOME_XYZ)}.")
+    ap.add_argument("--init-from-current", action="store_true",
+                    help="Use the robot's CURRENT EE pose as 'home' instead of canonical Franka home. "
+                         "Backward-compatible behavior; B button homes to wherever robot was at script start.")
     args = ap.parse_args()
 
     print(f"[quest] mode={args.mode}  scale={args.scale}  "
@@ -396,7 +521,7 @@ def main() -> int:
     )
     time.sleep(1.0)
 
-    init_xyz, init_q = pub.get_current_target()
+    cur_target_xyz, cur_target_q = pub.get_current_target()
     state = pub.get_robot_state()
     if state is None:
         print("\n[quest] ⚠ no FrankaState received yet — is the lab stack running?")
@@ -404,7 +529,28 @@ def main() -> int:
         source.shutdown()
         return 3
 
-    print(f"[quest] init target = ({init_xyz[0]:+.3f}, {init_xyz[1]:+.3f}, {init_xyz[2]:+.3f})")
+    # ── Pick the "home" pose that B / grip / Ctrl-C will target ──
+    if args.home_xyz is not None:
+        init_xyz = np.array(args.home_xyz, dtype=np.float64)
+        home_src = "--home-xyz CLI"
+    elif args.init_from_current:
+        init_xyz = cur_target_xyz.copy()
+        home_src = "current robot EE (--init-from-current)"
+    else:
+        init_xyz = FRANKA_HOME_XYZ.copy()
+        home_src = "canonical Franka home (default)"
+
+    # Quaternion: use the current robot EE quat (sensible default for
+    # whatever orientation the robot is configured with — gripper down etc.)
+    init_q = cur_target_q.copy()
+
+    print(f"[quest] current robot EE = ({cur_target_xyz[0]:+.3f},"
+          f" {cur_target_xyz[1]:+.3f}, {cur_target_xyz[2]:+.3f})")
+    print(f"[quest] HOME pose         = ({init_xyz[0]:+.3f},"
+          f" {init_xyz[1]:+.3f}, {init_xyz[2]:+.3f})  [{home_src}]")
+    if not np.allclose(init_xyz, cur_target_xyz, atol=0.01):
+        print(f"[quest] note: current robot EE differs from HOME — pressing B / Ctrl-C "
+              f"will slew the robot to HOME.")
 
     teleop = QuestTeleop(
         pub=pub, source=source,

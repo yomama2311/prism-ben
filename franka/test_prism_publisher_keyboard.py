@@ -130,39 +130,51 @@ def print_help(step: float):
 
 
 def slew_to(pub, target_xyz: np.ndarray, target_quat: np.ndarray,
-            slew_timeout: float = 6.0, settle_timeout: float = 3.0,
-            tol_target: float = 0.001, tol_robot: float = 0.005,
+            slew_timeout: float = 8.0, settle_timeout: float = 5.0,
+            tol_target_xyz: float = 0.001, tol_robot_xyz: float = 0.008,
+            tol_target_rot: float = 0.05, tol_robot_rot: float = 0.10,
             update_period: float = 0.1) -> str:
-    """Smoothly slew the published target back to (target_xyz, target_quat).
+    """Smoothly slew the published target back to (target_xyz, target_quat),
+    waiting for BOTH translation and rotation convergence.
 
-    PrismPublisher.set_target_pose enforces per-call rate-limiting, so we just
-    call it repeatedly with the goal — each call moves the target by at most
-    max_translation_per_update (default 20 mm) toward the goal.
+    PrismPublisher.set_target_pose enforces per-call rate-limiting on both
+    xyz (max_translation_per_update) and quaternion (max_rotation_per_update,
+    SLERP-clamped). We call it repeatedly with the goal until both converge.
+
+    tol_target_rot / tol_robot_rot are in radians (~3° / ~6° default).
 
     Returns: 'reached', 'reflex', 'slew_timeout', 'settle_timeout'.
     """
-    # Phase 1: slew the TARGET to the goal pose
+    from prism_publisher import _quat_angle
+
+    # Phase 1: slew the TARGET to the goal pose (both xyz AND rotation)
     t0 = time.time()
     while time.time() - t0 < slew_timeout:
         st = pub.get_robot_state()
         if st is not None and st.robot_mode == ROBOT_MODE_REFLEX:
             return "reflex"
-        cur_target_xyz, _ = pub.get_current_target()
-        if np.linalg.norm(target_xyz - cur_target_xyz) < tol_target:
+        cur_target_xyz, cur_target_q = pub.get_current_target()
+        d_xyz = float(np.linalg.norm(target_xyz - cur_target_xyz))
+        d_rot = float(_quat_angle(cur_target_q, target_quat))
+        if d_xyz < tol_target_xyz and d_rot < tol_target_rot:
             break
         pub.set_target_pose(target_xyz, target_quat)
         time.sleep(update_period)
     else:
         return "slew_timeout"
 
-    # Phase 2: wait for the ROBOT to converge to the target
+    # Phase 2: wait for the ROBOT itself to converge (xyz AND rotation)
     t1 = time.time()
     while time.time() - t1 < settle_timeout:
+        # Keep republishing the target so cartesian impedance keeps pulling
+        pub.set_target_pose(target_xyz, target_quat)
         ee = pub.get_robot_ee()
         if ee is None:
             time.sleep(update_period); continue
-        robot_xyz, _ = ee
-        if np.linalg.norm(target_xyz - robot_xyz) < tol_robot:
+        robot_xyz, robot_q = ee
+        d_xyz = float(np.linalg.norm(target_xyz - robot_xyz))
+        d_rot = float(_quat_angle(robot_q, target_quat))
+        if d_xyz < tol_robot_xyz and d_rot < tol_robot_rot:
             return "reached"
         time.sleep(update_period)
     return "settle_timeout"
