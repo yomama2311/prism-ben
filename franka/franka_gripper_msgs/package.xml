@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>franka_gripper_msgs</name>
+  <version>0.1.0</version>
+  <description>
+    Minimal copy of franka_gripper's .action and .msg files, generated as a
+    standalone package WITHOUT the libfranka C++ dependency. Only the
+    Python/C++ message types are produced — no robot control code. Lets ROS
+    clients (e.g. our PrismPublisher quest teleop) talk to a remote
+    franka_gripper action server without needing libfranka locally.
+  </description>
+  <maintainer email="yuhai@example.com">Yuhai PRISM-JEPA</maintainer>
+  <license>Apache 2.0</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>message_generation</build_depend>
+  <depend>actionlib_msgs</depend>
+  <depend>std_msgs</depend>
+  <exec_depend>message_runtime</exec_depend>
+  <build_export_depend>message_runtime</build_export_depend>
+
+  <export>
+    <architecture_independent/>
+  </export>
+</package>
