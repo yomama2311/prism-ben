@@ -9,7 +9,12 @@ without changing the planner, the cost, or adding any new hyperparameter
 beyond the prior scale `s`.
 
 <p align="center">
-  <img src="docs/figures/fig_architecture.png" width="92%">
+  <img src="docs/figures/demo_cube.gif" width="38%" alt="Cube rollout">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="docs/figures/demo_pusht.gif" width="38%" alt="PushT rollout">
+  <br>
+  <sub><em>PRISM-MPPI rollouts (s = 1, K = 128):
+  OGBench <code>cube-single</code> (left) and PushT (right).</em></sub>
 </p>
 
 <p align="center">
@@ -64,7 +69,11 @@ upstream collection. Drop the extracted `.h5` files under `$STABLEWM_HOME/`.
 
 ---
 
-## How it works (one paragraph)
+## How it works
+
+<p align="center">
+  <img src="docs/figures/fig_architecture.png" width="92%">
+</p>
 
 A JEPA world model (frozen encoder `h_ψ` + AR predictor `f_θ`) scores
 H-step rollouts in latent space; an MPPI planner samples action sequences from
