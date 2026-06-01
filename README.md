@@ -5,8 +5,7 @@ PRISM injects a learned **action prior** into a sampling-based MPC planner via
 closed-form **Product-of-Gaussians fusion** at the planner's initial sampling
 distribution. On a JEPA world model, this turns a 1-line architectural change
 into large success-rate gains on goal-conditioned visual manipulation tasks
-without changing the planner, the cost, or adding any new hyperparameter
-beyond the prior scale `s`.
+without changing the planner, the cost, or introducing new hyperparameters.
 
 <p align="center">
   <img src="docs/figures/demo_cube.gif" width="38%" alt="Cube rollout">
@@ -110,7 +109,7 @@ prism-jepa/
 ├── jepa_cache.py            ▴ vendored from LeWM (PRISM-aware caching extensions)
 ├── config/                  ▴ Hydra configs (LeWM tasks + +head namespace)
 ├── docs/                    ★ method notes, experiments, figures
-└── franka/                  (out-of-scope for sim release; see "Real robot" below)
+└── franka/                  (real-robot integration; out-of-scope for sim release)
 ```
 
 ★ = our contribution, ▴ = vendored LeWM (upstream code we depend on / lightly
@@ -171,15 +170,6 @@ Sec. 4.4 of the paper.
 The LeWM JEPA itself trains from scratch via `python train.py data=<task>`;
 see [`README_LEWM_UPSTREAM.md`](README_LEWM_UPSTREAM.md) for the upstream
 recipe.
-
----
-
-## Real robot
-
-The paper's Sec. 4.6 reports rollouts on Franka and ARX-X5 arms. The code is
-in `franka/` and the relevant configs in `config/train/data/`. **Real-robot
-demonstration data is not released** at this time; we publish only the sim
-weights above.
 
 ---
 
