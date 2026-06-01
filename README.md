@@ -1,184 +1,190 @@
+# PRISM-JEPA
+### PRior-guided Imagination Sampling in world Models — JEPA edition
 
-# LeWorldModel
-### Stable End-to-End Joint-Embedding Predictive Architecture from Pixels
-
-[Lucas Maes*](https://x.com/lucasmaes_), [Quentin Le Lidec*](https://quentinll.github.io/), [Damien Scieur](https://scholar.google.com/citations?user=hNscQzgAAAAJ&hl=fr), [Yann LeCun](https://yann.lecun.com/) and [Randall Balestriero](https://randallbalestriero.github.io/)
-
-**Abstract:** Joint Embedding Predictive Architectures (JEPAs) offer a compelling framework for learning world models in compact latent spaces, yet existing methods remain fragile, relying on complex multi-term losses, exponential moving averages, pretrained encoders, or auxiliary supervision to avoid representation collapse. In this work, we introduce LeWorldModel (LeWM), the first JEPA that trains stably end-to-end from raw pixels using only two loss terms: a next-embedding prediction loss and a regularizer enforcing Gaussian-distributed latent embeddings. This reduces tunable loss hyperparameters from six to one compared to the only existing end-to-end alternative. With ~15M parameters trainable on a single GPU in a few hours, LeWM plans up to 48× faster than foundation-model-based world models while remaining competitive across diverse 2D and 3D control tasks. Beyond control, we show that LeWM's latent space encodes meaningful physical structure through probing of physical quantities. Surprise evaluation confirms that the model reliably detects physically implausible events.
-
-<p align="center">
-   <b>[ <a href="https://arxiv.org/pdf/2603.19312v1">Paper</a> | <a href="https://huggingface.co/collections/quentinll/lewm">Checkpoints &amp; Data</a> | <a href="https://le-wm.github.io/">Website</a> ]</b>
-</p>
-
-<br>
+PRISM injects a learned **action prior** into a sampling-based MPC planner via
+closed-form **Product-of-Gaussians fusion** at the planner's initial sampling
+distribution. On a JEPA world model, this turns a 1-line architectural change
+into large success-rate gains on goal-conditioned visual manipulation tasks
+without changing the planner, the cost, or adding any new hyperparameter
+beyond the prior scale `s`.
 
 <p align="center">
-  <img src="assets/lewm.gif" width="80%">
+  <img src="docs/figures/fig_architecture.png" width="92%">
 </p>
 
-If you find this code useful, please reference it in your paper:
-```
-@article{maes_lelidec2026lewm,
-  title={LeWorldModel: Stable End-to-End Joint-Embedding Predictive Architecture from Pixels},
-  author={Maes, Lucas and Le Lidec, Quentin and Scieur, Damien and LeCun, Yann and Balestriero, Randall},
-  journal={arXiv preprint},
-  year={2026}
-}
-```
+<p align="center">
+  <b>[ <a href="#">Paper</a> (TBA) | <a href="https://huggingface.co/YuhaiW/prism-jepa-cube">Cube weights</a> | <a href="https://huggingface.co/YuhaiW/prism-jepa-pusht">PushT weights</a> ]</b>
+</p>
 
-## Using the code
-This codebase builds on [stable-worldmodel](https://github.com/galilai-group/stable-worldmodel) for environment management, planning, and evaluation, and [stable-pretraining](https://github.com/galilai-group/stable-pretraining) for training. Together they reduce this repository to its core contribution: the model architecture and training objective.
+---
 
-**Installation:**
+## Headline results
+
+Mean ± std success-rate over 3 seeds {0, 1, 42}, planner budget **K = 128**:
+
+|              | Vanilla MPPI | BC-only | **PRISM-MPPI (s = 1)** |
+|:------------:|:------------:|:-------:|:----------------------:|
+| **Cube**     |     44.0     |   66.0  |     **79.3 ± 6.1**     |
+| **PushT**    |     57.0     |   31.0  |     **88.7 ± 4.2**     |
+
+`s = 1` is the only hyperparameter; the full `s`-sweep is in the paper Sec. 4.4.
+
+---
+
+## Quickstart
+
 ```bash
+# 0. clone
+git clone git@github.com:YuhaiW/prism-jepa.git
+cd prism-jepa
+
+# 1. set up env (uv recommended; ~5 min)
 uv venv --python=3.10
 source .venv/bin/activate
-uv pip install stable-worldmodel[train,env]
+uv pip install stable-worldmodel[train]
+uv pip install opencv-python pygame mujoco pymunk scikit-image hdf5plugin
+export STABLEWM_HOME=$HOME/.stable-wm  # picks up weights + datasets here
+
+# 2. download pretrained weights (Cube example; PushT identical with --repo …-pusht)
+hf download YuhaiW/prism-jepa-cube --local-dir ./hf_cube
+mkdir -p $STABLEWM_HOME/cube
+mv hf_cube/lewm_object.ckpt $STABLEWM_HOME/cube/
+mv hf_cube/prior_head_cube.pt .
+
+# 3. run PRISM-MPPI (~3 min, 50 episodes, batch K=128 on a single GPU)
+python eval_prism_head.py --config-name=cube policy=cube/lewm solver=mppi \
+    +head.injection_mode=pog +head.sigma_scale=1.0 \
+    +head.ckpt=prior_head_cube.pt eval.num_eval=50
 ```
 
-## Data
+You also need the LeWM datasets (used for dataset-stats / scalers at eval time;
+not the demonstrations themselves) — see
+[`quentinll/lewm`](https://huggingface.co/collections/quentinll/lewm) for the
+upstream collection. Drop the extracted `.h5` files under `$STABLEWM_HOME/`.
 
-Datasets use the HDF5 format for fast loading. Download the data from [HuggingFace](https://huggingface.co/collections/quentinll/lewm) and decompress with:
+---
+
+## How it works (one paragraph)
+
+A JEPA world model (frozen encoder `h_ψ` + AR predictor `f_θ`) scores
+H-step rollouts in latent space; an MPPI planner samples action sequences from
+`N(0, σ_π²)`, scores them with `‖ẑ_{t+H} − z_g‖²`, and reweights elites.
+PRISM trains a lightweight **prior head** `g_φ(z_t, z_g) → (μ_p, σ_p)` on
+offline demonstrations (β-NLL, β = 0.5) and fuses it with the planner's
+default sampling distribution at the initial step via the closed-form
+Product-of-Gaussians:
+
+```
+μ_init  =  σ_init² · (μ_p / (s·σ_p)²)              σ_init² = ((s·σ_p)⁻² + σ_π⁻²)⁻¹
+```
+
+The planner's `σ` stays **frozen** across MPPI iterations (no refit, unlike
+CEM); the prior only re-shapes where samples are drawn from, never how the
+cost is computed. This keeps PRISM strictly visual-cost-driven (no reward, no
+Q-shortcut) while giving the planner a strong starting bet.
+
+---
+
+## Repository layout
+
+```
+prism-jepa/
+├── prism_mppi.py            ★ ours — PoG-fusion MPPI subclass
+├── prism_cem.py             ★ ours — PoG-fusion CEM subclass (ablation)
+├── prism_head_policy.py     ★ ours — wraps PriorHead as a swm Policy
+├── oracle_policy.py         ★ ours — KNN-oracle reference policy (debug)
+├── eval_prism_head.py       ★ ours — main eval entry for PRISM-MPPI
+├── eval_oracle.py           ★ ours — oracle eval entry (debug)
+├── train_prior_head.py      ★ ours — prior-head trainer (β-NLL)
+├── jepa.py / module.py      ▴ vendored from LeWM (patched: see git diff vs upstream)
+├── train.py / eval.py       ▴ vendored from LeWM (entry points)
+├── jepa_cache.py            ▴ vendored from LeWM (PRISM-aware caching extensions)
+├── config/                  ▴ Hydra configs (LeWM tasks + +head namespace)
+├── docs/                    ★ method notes, experiments, figures
+└── franka/                  (out-of-scope for sim release; see "Real robot" below)
+```
+
+★ = our contribution, ▴ = vendored LeWM (upstream code we depend on / lightly
+patched; see [le-wm](https://github.com/lucas-maes/le-wm) for the canonical
+versions).
+
+---
+
+## Reproduce the paper
+
+Both tasks use the same recipe — change `cube` ↔ `pusht` and the head ckpt:
 
 ```bash
-tar --zstd -xvf archive.tar.zst
+# Cube — PRISM-MPPI (paper main result)
+python eval_prism_head.py --config-name=cube policy=cube/lewm solver=mppi \
+    +head.injection_mode=pog +head.sigma_scale=1.0 \
+    +head.ckpt=prior_head_cube.pt eval.num_eval=50 seed=0
+# repeat with seed=1, seed=42 → mean over the three is reported
+
+# Cube — Vanilla MPPI baseline
+python eval_prism_head.py --config-name=cube policy=cube/lewm solver=mppi \
+    +head.injection_mode=none eval.num_eval=50 seed=0
+
+# PushT — PRISM-MPPI
+python eval_prism_head.py --config-name=pusht policy=pusht/lewm solver=mppi \
+    +head.injection_mode=pog +head.sigma_scale=1.0 \
+    +head.ckpt=prior_head_pusht.pt eval.num_eval=50 seed=0
 ```
 
-Place the extracted `.h5` files under `$STABLEWM_HOME` (defaults to `~/.stable-wm/`). You can override this path:
-```bash
-export STABLEWM_HOME=/path/to/your/storage
-```
+Per-seed numbers you should land within ~ ± std:
 
-Dataset names are specified without the `.h5` extension. For example, `config/train/data/pusht.yaml` references `pusht_expert_train`, which resolves to `$STABLEWM_HOME/pusht_expert_train.h5`.
+| Task  | seed 0 | seed 1 | seed 42 | mean |
+|-------|-------:|-------:|--------:|-----:|
+| Cube (PRISM-MPPI, s=1) | ≈ 80 | ≈ 86 | ≈ 72 | **79.3** |
+| Cube (Vanilla MPPI)    | ≈ 44 | ≈ 48 | ≈ 40 | **44.0** |
+| PushT (PRISM-MPPI, s=1) | ≈ 88 | ≈ 92 | ≈ 86 | **88.7** |
+| PushT (Vanilla MPPI)    | ≈ 56 | ≈ 60 | ≈ 54 | **57.0** |
 
-## Training
+The `s`-sweep (`+head.sigma_scale={0.1, 0.3, 1, 2, 3, 10, 30, 100, 1e4}`)
+reproduces Fig. 5 of the paper.
 
-`jepa.py` contains the PyTorch implementation of LeWM. Training is configured via [Hydra](https://hydra.cc/) config files under `config/train/`.
+---
 
-Before training, set your WandB `entity` and `project` in `config/train/lewm.yaml`:
-```yaml
-wandb:
-  config:
-    entity: your_entity
-    project: your_project
-```
+## Train your own prior head
 
-To launch training:
-```bash
-python train.py data=pusht
-```
-
-Checkpoints are saved to `$STABLEWM_HOME` upon completion.
-
-For baseline scripts, see the stable-worldmodel [scripts](https://github.com/galilai-group/stable-worldmodel/tree/main/scripts/train) folder.
-
-## Planning
-
-Evaluation configs live under `config/eval/`. Set the `policy` field to the checkpoint path **relative to `$STABLEWM_HOME`**, without the `_object.ckpt` suffix:
-
-```bash
-# ✓ correct
-python eval.py --config-name=pusht.yaml policy=pusht/lewm
-
-# ✗ incorrect
-python eval.py --config-name=pusht.yaml policy=pusht/lewm_object.ckpt
-```
-
-## Pretrained Checkpoints
-
-Pretrained LeWM checkpoints for each environment are mirrored on the Hugging Face
-Hub (model repos), alongside the datasets (dataset repos) in the same collection:
-
-- [`quentinll/lewm-pusht`](https://huggingface.co/quentinll/lewm-pusht)
-- [`quentinll/lewm-cube`](https://huggingface.co/quentinll/lewm-cube)
-- [`quentinll/lewm-tworooms`](https://huggingface.co/quentinll/lewm-tworooms)
-- [`quentinll/lewm-reacher`](https://huggingface.co/quentinll/lewm-reacher)
-
-The full baseline checkpoint suite (PLDM, LeJEPA, IVL, IQL, GCBC, DINO-WM, DINO-WM-noprop)
-is available on [Google Drive](https://drive.google.com/drive/folders/1r31os0d4-rR0mdHc7OlY_e5nh3XT4r4e):
-
-<div align="center">
-
-| Method | two-room | pusht | cube | reacher |
-|:---:|:---:|:---:|:---:|:---:|
-| pldm | ✓ | ✓ | ✓ | ✓ |
-| lejepa | ✓ | ✓ | ✓ | ✓ |
-| ivl | ✓ | ✓ | ✓ | — |
-| iql | ✓ | ✓ | ✓ | — |
-| gcbc | ✓ | ✓ | ✓ | — |
-| dinowm | ✓ | ✓ | — | — |
-| dinowm_noprop | ✓ | ✓ | ✓ | ✓ |
-
-</div>
-
-## Loading a checkpoint
-
-### From the Drive archive
-
-Each tar archive contains two files per checkpoint:
-- `<name>_object.ckpt` — a serialized Python object for convenient loading; this is what `eval.py` and the `stable_worldmodel` API use
-- `<name>_weight.ckpt` — a weights-only checkpoint (`state_dict`) for cases where you want to load weights into your own model instance
-
-Place the extracted files under `$STABLEWM_HOME/` and load via:
-
-```python
-import stable_worldmodel as swm
-
-# Load the cost model (for MPC)
-cost = swm.policy.AutoCostModel('pusht/lewm')
-```
-
-`AutoCostModel` accepts:
-- `run_name` — checkpoint path **relative to `$STABLEWM_HOME`**, without the `_object.ckpt` suffix
-- `cache_dir` — optional override for the checkpoint root (defaults to `$STABLEWM_HOME`)
-
-The returned module is in `eval` mode with its PyTorch weights accessible via `.state_dict()`.
-
-### From the Hugging Face mirror
-
-The HF model repos ship the LeWM checkpoint as a `weights.pt` (state dict) plus a
-`config.json` describing the model. Convert once to produce the `_object.ckpt`
-that `eval.py` expects:
+Trains in ~ 30 min on a single GPU per task. Encoder is frozen; only the
+3-layer MLP head learns:
 
 ```bash
-# download weights.pt + config.json
-hf download quentinll/lewm-pusht --local-dir $STABLEWM_HOME/hf_pusht
-
-# convert to object checkpoint under $STABLEWM_HOME/pusht/lewm_object.ckpt
-python - <<'PY'
-import json, torch, stable_pretraining as spt
-from pathlib import Path
-from jepa import JEPA
-from module import ARPredictor, Embedder, MLP
-import stable_worldmodel as swm
-
-src = Path(swm.data.utils.get_cache_dir(), "hf_pusht")
-out = Path(swm.data.utils.get_cache_dir(), "pusht", "lewm_object.ckpt")
-
-cfg = json.loads((src / "config.json").read_text())
-encoder = spt.backbone.utils.vit_hf(
-    cfg["encoder"]["size"],
-    patch_size=cfg["encoder"]["patch_size"],
-    image_size=cfg["encoder"]["image_size"],
-    pretrained=False, use_mask_token=False,
-)
-mlp = lambda k: MLP(input_dim=cfg[k]["input_dim"], output_dim=cfg[k]["output_dim"],
-                    hidden_dim=cfg[k]["hidden_dim"], norm_fn=torch.nn.BatchNorm1d)
-model = JEPA(
-    encoder=encoder,
-    predictor=ARPredictor(**cfg["predictor"]),
-    action_encoder=Embedder(**cfg["action_encoder"]),
-    projector=mlp("projector"),
-    pred_proj=mlp("pred_proj"),
-)
-sd = torch.load(src / "weights.pt", map_location="cpu", weights_only=False)
-model.load_state_dict(sd, strict=True)
-out.parent.mkdir(parents=True, exist_ok=True)
-torch.save(model, out)
-PY
+python train_prior_head.py task=cube  epochs=50 batch_size=512
+python train_prior_head.py task=pusht epochs=50 batch_size=512
 ```
 
-After conversion, load via `swm.policy.AutoCostModel('pusht/lewm')` as usual.
+Outputs `prior_head_<task>.pt` at the repo root. The trainer uses **β-NLL
+(β = 0.5)** and clamps `σ ≥ 0.05` (the `sigma_floor`) — these were swept in
+Sec. 4.4 of the paper.
 
-## Contact & Contributions
-Feel free to open [issues](https://github.com/lucas-maes/le-wm/issues)! For questions or collaborations, please contact `lucas.maes@mila.quebec`
+The LeWM JEPA itself trains from scratch via `python train.py data=<task>`;
+see [`README_LEWM_UPSTREAM.md`](README_LEWM_UPSTREAM.md) for the upstream
+recipe.
+
+---
+
+## Real robot
+
+The paper's Sec. 4.6 reports rollouts on Franka and ARX-X5 arms. The code is
+in `franka/` and the relevant configs in `config/train/data/`. **Real-robot
+demonstration data is not released** at this time; we publish only the sim
+weights above.
+
+---
+
+## Citation
+
+_BibTeX to be added._
+
+## Acknowledgements
+
+Built on top of [LeWM (LeWorldModel)](https://github.com/lucas-maes/le-wm) by
+Lucas Maes, Quentin Le Lidec, Damien Scieur, Yann LeCun, and Randall
+Balestriero. We thank them for an excellent, hackable JEPA codebase.
+
+## License
+
+MIT — see [`LICENSE`](LICENSE). Vendored LeWM files retain their upstream
+MIT copyright; the LICENSE file carries both.
