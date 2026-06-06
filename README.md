@@ -35,6 +35,23 @@ Mean ± std success-rate over 3 seeds {0, 1, 42}, planner budget **K = 128**:
 
 ---
 
+## Pretrained models (HuggingFace)
+
+The exact weights used to produce the headline PRISM-MPPI numbers above are
+released on HuggingFace as public model repos. Each bundle contains the JEPA
+world model (`lewm_object.ckpt`, ~72 MB) and the matching PRISM prior head
+(`prior_head_<task>.pt`, ~2 MB).
+
+| Task  | Repo |
+|-------|------|
+| Cube  | [`YuhaiW/prism-jepa-cube`](https://huggingface.co/YuhaiW/prism-jepa-cube) |
+| PushT | [`YuhaiW/prism-jepa-pusht`](https://huggingface.co/YuhaiW/prism-jepa-pusht) |
+
+See the [Quickstart](#quickstart) section below for the exact `hf download`
+commands and the eval invocation that reproduces the paper numbers.
+
+---
+
 ## Quickstart
 
 ```bash
