@@ -17,7 +17,7 @@ without changing the planner, the cost, or introducing new hyperparameters.
 </p>
 
 <p align="center">
-  <b>[ <a href="#">Paper</a> (TBA) | <a href="https://huggingface.co/YuhaiW/prism-jepa-cube">Cube weights</a> | <a href="https://huggingface.co/YuhaiW/prism-jepa-pusht">PushT weights</a> ]</b>
+  <b>[ <a href="https://arxiv.org/abs/2606.07974">Paper</a> | <a href="https://yuhaiw.github.io/PRISM_web/">Project page</a> | <a href="https://huggingface.co/YuhaiW/prism-jepa-cube">Cube weights</a> | <a href="https://huggingface.co/YuhaiW/prism-jepa-pusht">PushT weights</a> ]</b>
 </p>
 
 ---
@@ -31,7 +31,8 @@ Mean ± std success-rate over 3 seeds {0, 1, 42}, planner budget **K = 128**:
 | **Cube**     |     44.0     |   66.0  |     **79.3 ± 6.1**     |
 | **PushT**    |     57.0     |   31.0  |     **88.7 ± 4.2**     |
 
-`s = 1` is the only hyperparameter; the full `s`-sweep is in the paper Sec. 4.4.
+`s = 1` is the only hyperparameter; the full `s`-sweep is in the paper appendix
+(*Asymptote behavior under prior-scale sweep*).
 
 ---
 
@@ -166,7 +167,8 @@ Per-seed numbers you should land within ~ ± std:
 | PushT (Vanilla MPPI)    | ≈ 56 | ≈ 60 | ≈ 54 | **57.0** |
 
 The `s`-sweep (`+head.sigma_scale={0.1, 0.3, 1, 2, 3, 10, 30, 100, 1e4}`)
-reproduces Fig. 5 of the paper.
+reproduces the prior-scale-sweep figure in the paper appendix
+(*Asymptote behavior under prior-scale sweep*).
 
 ---
 
@@ -181,8 +183,8 @@ python train_prior_head.py task=pusht epochs=50 batch_size=512
 ```
 
 Outputs `prior_head_<task>.pt` at the repo root. The trainer uses **β-NLL
-(β = 0.5)** and clamps `σ ≥ 0.05` (the `sigma_floor`) — these were swept in
-Sec. 4.4 of the paper.
+(β = 0.5)** and clamps `σ ≥ 0.05` (the `sigma_floor`); the floor is swept in the
+paper appendix (*Robustness to the variance floor*).
 
 The LeWM JEPA itself trains from scratch via `python train.py data=<task>`;
 see [`README_LEWM_UPSTREAM.md`](README_LEWM_UPSTREAM.md) for the upstream
@@ -192,7 +194,19 @@ recipe.
 
 ## Citation
 
-_BibTeX to be added._
+If you find this work useful, please cite:
+
+```bibtex
+@misc{wang2026prism,
+  title         = {PRISM: PRior-guided Imagination Sampling in world Models},
+  author        = {Yuhai Wang and Jiawei Xia and Rongxuan Zhou and Xiao Hu and Yongliang Shi and Jing Du and Yang Ye},
+  year          = {2026},
+  eprint        = {2606.07974},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.RO},
+  url           = {https://arxiv.org/abs/2606.07974},
+}
+```
 
 ## Acknowledgements
 
