@@ -77,6 +77,8 @@ from prior_head import PriorHead, beta_nll_loss
 
 
 SEED = 42
+# Defaults for endframe (sim) mode. Offset-mode overrides these at runtime
+# based on goal_meta.json saved by jepa_cache.py (see docs/35 design).
 H = 5
 A_BLOCK = 5
 WIN_LEN = H * A_BLOCK  # 25
@@ -116,6 +118,129 @@ TASKS = {
         train_ep_range=(0, 9000),
         val_ep_range=(9000, 10000),
     ),
+    "arx": dict(
+        h5=f"{STABLE_HOME}/arx_left_cube.h5",
+        cache_dir=f"{STABLE_HOME}/jepa_cache/arx",
+        out_path="/home/yuhai/project/prism-jepa/prior_head_arx.pt",
+        # 201 episodes total: train [0, 180), val [180, 201)  (~10% held out)
+        train_ep_range=(0, 180),
+        val_ep_range=(180, 201),
+    ),
+    "red_cube": dict(
+        h5=f"{STABLE_HOME}/red_cube.h5",
+        cache_dir=f"{STABLE_HOME}/jepa_cache/red_cube",
+        out_path="/home/yuhai/project/prism-jepa/prior_head_red_cube.pt",
+        # 201 episodes total: train [0, 180), val [180, 201)  (~10% held out)
+        train_ep_range=(0, 180),
+        val_ep_range=(180, 201),
+    ),
+    "franka_pusht": dict(
+        h5=f"{STABLE_HOME}/franka_pusht.h5",
+        cache_dir=f"{STABLE_HOME}/jepa_cache/franka_pusht",
+        out_path="/home/yuhai/project/prism-jepa/prior_head_franka_pusht.pt",
+        # 36 episodes total: train [0, 32), val [32, 36)  (~11% held out)
+        train_ep_range=(0, 32),
+        val_ep_range=(32, 36),
+    ),
+    "pusht_lewm_fr3": dict(
+        h5=f"{STABLE_HOME}/pusht_lewm_fr3.h5",
+        cache_dir=f"{STABLE_HOME}/jepa_cache/pusht_lewm_fr3",
+        out_path="/home/yuhai/project/prism-jepa/prior_head_pusht_lewm_fr3.pt",
+        # 50 episodes total: train [0, 45), val [45, 50)  (10% held out)
+        train_ep_range=(0, 45),
+        val_ep_range=(45, 50),
+    ),
+    "pusht_lewm_fr3_v2_small2d": dict(
+        # H4 V2 deploy candidate — small predictor + 2D action + train.py normalized
+        h5=f"{STABLE_HOME}/pusht_lewm_fr3_2d.h5",
+        cache_dir=f"{STABLE_HOME}/jepa_cache/pusht_lewm_fr3_v2_small2d",
+        out_path="/home/yuhai/project/prism-jepa/prior_head_pusht_lewm_fr3_v2.pt",
+        # 50 episodes total: train [0, 45), val [45, 50)  (10% held out)
+        train_ep_range=(0, 45),
+        val_ep_range=(45, 50),
+    ),
+    "pusht_lewm_fr3_v3_full2d": dict(
+        # v3 — full predictor + 2D action + 200 demos / 51k frames
+        h5=f"{STABLE_HOME}/pusht_lewm_fr3_2d.h5",
+        cache_dir=f"{STABLE_HOME}/jepa_cache/pusht_lewm_fr3_v3_full2d",
+        out_path="/home/yuhai/project/prism-jepa/prior_head_pusht_lewm_fr3_v3.pt",
+        # 200 episodes total: train [0, 180), val [180, 200)  (10% held out)
+        train_ep_range=(0, 180),
+        val_ep_range=(180, 200),
+    ),
+    "pusht_lewm_fr3_v4b": dict(
+        # v4b — multi-step AR supervision conservative retry (num_preds=3).
+        h5=f"{STABLE_HOME}/pusht_lewm_fr3_2d.h5",
+        cache_dir=f"{STABLE_HOME}/jepa_cache/pusht_lewm_fr3_v4b",
+        out_path="/home/yuhai/project/prism-jepa/prior_head_pusht_lewm_fr3_v4b.pt",
+        train_ep_range=(0, 180),
+        val_ep_range=(180, 200),
+    ),
+    "pusht_lewm_fr3_v3_short15": dict(
+        # v3 NEW NAMING (not the same as v3_full2d!) — 411 demos / 94k frames from
+        # Rongxuan-Zhou/pusht_lewm_fr3 v3 snapshot. Trained at concat / num_preds=1.
+        # Goal-mode = offset 15 (read from cache_dir/goal_meta.json) → per-sample
+        # short-horizon hindsight goals, H=3 plan-steps. See docs/35 for rationale.
+        h5=f"{STABLE_HOME}/pusht_lewm_fr3_2d_v3.h5",
+        cache_dir=f"{STABLE_HOME}/jepa_cache/pusht_lewm_fr3_v3_short15",
+        out_path="/home/yuhai/project/prism-jepa/prior_head_pusht_fr3_v3_short15.pt",
+        train_ep_range=(0, 370),
+        val_ep_range=(370, 411),
+    ),
+    "pusht_lewm_fr3_v3_short25": dict(
+        # Same v3 ckpt + dataset; OFFSET=25 (sim H=5 length, same z_g/z_t separation as endframe but with per-sample lookup).
+        h5=f"{STABLE_HOME}/pusht_lewm_fr3_2d_v3.h5",
+        cache_dir=f"{STABLE_HOME}/jepa_cache/pusht_lewm_fr3_v3_short25",
+        out_path="/home/yuhai/project/prism-jepa/prior_head_pusht_fr3_v3_short25.pt",
+        train_ep_range=(0, 370),
+        val_ep_range=(370, 411),
+    ),
+    "pusht_lewm_fr3_v3_endframe": dict(
+        # Same v3 ckpt + dataset; endframe goal (sim convention) — z_g = ep last frame, H=5.
+        h5=f"{STABLE_HOME}/pusht_lewm_fr3_2d_v3.h5",
+        cache_dir=f"{STABLE_HOME}/jepa_cache/pusht_lewm_fr3_v3_endframe",
+        out_path="/home/yuhai/project/prism-jepa/prior_head_pusht_fr3_v3_endframe.pt",
+        train_ep_range=(0, 370),
+        val_ep_range=(370, 411),
+    ),
+    "pusht_lewm_fr3_v3_first200_endframe": dict(
+        # docs/35 §11 — sim-aligned prior: eps 0-199 ONLY (the "T pushed to drawn
+        # target" clean subset), HER endframe goal, H=5 (sim convention). Tests
+        # the hypothesis that random-end subset (eps 200-410) was polluting the
+        # training signal. REUSES the existing v3_endframe cache (covers all
+        # 411 eps' features + endframe goals; we just subset on train side).
+        h5=f"{STABLE_HOME}/pusht_lewm_fr3_2d_v3.h5",
+        cache_dir=f"{STABLE_HOME}/jepa_cache/pusht_lewm_fr3_v3_endframe",  # reuse
+        out_path="/home/yuhai/project/prism-jepa/prior_head_pusht_fr3_v3_first200_endframe.pt",
+        train_ep_range=(0, 180),     # 90% of clean target subset
+        val_ep_range=(180, 200),     # 10% held out within target subset
+    ),
+    "pusht_lewm_fr3_v3_first200_endframe_h3": dict(
+        # Same as v3_first200_endframe but with H_override=3 — action window
+        # 15 ticks (vs 25 in sim convention). Matches v3 MPPI deploy horizon
+        # H=3 (per docs/34 pred/id @ H=5 is degraded; H=3 is the deploy sweet spot).
+        # Tests "does aligning prior H to deploy H improve val MSE?"
+        h5=f"{STABLE_HOME}/pusht_lewm_fr3_2d_v3.h5",
+        cache_dir=f"{STABLE_HOME}/jepa_cache/pusht_lewm_fr3_v3_endframe",  # reuse
+        out_path="/home/yuhai/project/prism-jepa/prior_head_pusht_fr3_v3_first200_endframe_h3.pt",
+        train_ep_range=(0, 180),
+        val_ep_range=(180, 200),
+        H_override=3,                # ← only difference from above
+    ),
+    "dinov2_pusht": dict(
+        h5=f"{STABLE_HOME}/pusht_expert_train.h5",
+        cache_dir=f"{STABLE_HOME}/dinov2_cache/pusht_projected",
+        out_path="/home/yuhai/project/prism-jepa/prior_head_dinov2_pusht.pt",
+        train_ep_range=(0, 16817),
+        val_ep_range=(16817, 18685),
+    ),
+    "dinov2_cube": dict(
+        h5=f"{STABLE_HOME}/ogbench/cube_single_expert.h5",
+        cache_dir=f"{STABLE_HOME}/dinov2_cache/cube_projected",
+        out_path="/home/yuhai/project/prism-jepa/prior_head_dinov2_cube.pt",
+        train_ep_range=(0, 9000),
+        val_ep_range=(9000, 10000),
+    ),
 }
 
 
@@ -126,13 +251,13 @@ def set_seed(s=SEED):
     torch.cuda.manual_seed_all(s)
 
 
-def build_window_indices(ep_offset, ep_len, ep_lo, ep_hi):
-    """Return (start_indices, episode_ids) — frame indices where a length-25 action
+def build_window_indices(ep_offset, ep_len, ep_lo, ep_hi, win_len=WIN_LEN):
+    """Return (start_indices, episode_ids) — frame indices where a length-win_len action
     window can start without crossing into the NaN end-of-episode action."""
     starts_list = []
     eps_list = []
     for e in range(ep_lo, ep_hi):
-        max_off = int(ep_len[e]) - WIN_LEN  # exclusive
+        max_off = int(ep_len[e]) - win_len  # exclusive
         if max_off <= 0:
             continue
         offs = np.arange(max_off, dtype=np.int64)
@@ -163,8 +288,25 @@ def main():
     ap.add_argument("--lr", type=float, default=LR)
     ap.add_argument("--wd", type=float, default=WD)
     ap.add_argument("--beta", type=float, default=BETA)
+    ap.add_argument("--force-save", action="store_true",
+                    help="Save the best ckpt even if HARD GATES fail. Use only "
+                         "for sanity-deploy of a known-broken head (e.g., Franka "
+                         "PushT 36-demo negative case for the paper).")
     ap.add_argument("--out", default=None,
                     help="Override the per-task default checkpoint path")
+    ap.add_argument("--seed", type=int, default=SEED,
+                    help="RNG seed (default 42 — the released single-head recipe). "
+                         "Rebuttal ensembles use seeds 0-4.")
+    ap.add_argument("--corrupt-ep-frac", type=float, default=0.0,
+                    help="Rebuttal §5 suboptimal-data study: fraction of TRAIN "
+                         "episodes whose actions are replaced by uniform-random "
+                         "draws within per-dim data bounds (simulates mixing "
+                         "random/failure demos into the prior's dataset). The "
+                         "scaler stays fit on the CLEAN actions so the head's "
+                         "output space remains aligned with eval.py's scaler; "
+                         "val episodes are never corrupted. Use --force-save: "
+                         "hard gates measure fit to clean expert val and are "
+                         "expected to fail at high fractions.")
     args = ap.parse_args()
     if args.max_epochs is not None:
         args.epochs = args.max_epochs
@@ -176,7 +318,32 @@ def main():
     train_ep_lo, train_ep_hi = task_cfg["train_ep_range"]
     val_ep_lo, val_ep_hi = task_cfg["val_ep_range"]
 
-    set_seed()
+    # ---- Goal-mode dispatch (docs/35) ------------------------------------
+    # Reads goal_meta.json from cache_dir (written by jepa_cache.py).
+    # In offset mode: z_g per sample = features[start + OFFSET], action window
+    # of length OFFSET, H_local = OFFSET // A_BLOCK plan-steps.
+    # In endframe mode: z_g per ep = goals[ep_id] (sim convention), H=5.
+    goal_meta_path = Path(cache_dir) / "goal_meta.json"
+    if goal_meta_path.exists():
+        meta = json.load(open(goal_meta_path))
+        GOAL_MODE = meta.get("goal_mode", "endframe")
+        OFFSET = int(meta.get("offset", 15)) if GOAL_MODE == "offset" else None
+    else:
+        GOAL_MODE = "endframe"
+        OFFSET = None
+    if GOAL_MODE == "offset":
+        WIN_LEN_LOCAL = OFFSET
+        assert OFFSET % A_BLOCK == 0, f"offset={OFFSET} must be a multiple of A_BLOCK={A_BLOCK}"
+        H_LOCAL = OFFSET // A_BLOCK
+    else:
+        # Endframe mode: task may override H via `H_override` config (e.g. set H=3
+        # to match deploy MPPI horizon). Defaults to sim convention H=5.
+        H_LOCAL = int(task_cfg.get("H_override", H))
+        WIN_LEN_LOCAL = H_LOCAL * A_BLOCK
+    print(f"[train] goal_mode={GOAL_MODE}  H_local={H_LOCAL}  WIN_LEN_local={WIN_LEN_LOCAL}  "
+          f"OFFSET={OFFSET}")
+
+    set_seed(args.seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"[train] task={args.task}  device={device}  epochs={args.epochs}  "
           f"batch={args.batch}  lr={args.lr}  wd={args.wd}  beta={args.beta}")
@@ -188,11 +355,18 @@ def main():
     print("[train] loading JEPA cache…")
     t0 = time.time()
     features = np.load(f"{cache_dir}/features.npy", mmap_mode="r")  # (N, D) fp16
-    goals = np.load(f"{cache_dir}/goals.npy")  # (n_eps, D) fp16
     n_frames, D = features.shape
-    n_eps = goals.shape[0]
-    print(f"[train] features={features.shape} dtype={features.dtype}  "
-          f"goals={goals.shape}  load={time.time()-t0:.1f}s")
+    if GOAL_MODE == "endframe":
+        goals = np.load(f"{cache_dir}/goals.npy")  # (n_eps, D) fp16
+        n_eps_cache = goals.shape[0]
+        print(f"[train] features={features.shape} dtype={features.dtype}  "
+              f"goals={goals.shape}  load={time.time()-t0:.1f}s")
+    else:
+        # Offset mode: z_g comes from features[start + OFFSET] at sample time.
+        # No separate goals.npy.
+        goals = None
+        print(f"[train] features={features.shape} dtype={features.dtype}  "
+              f"goals=<none, offset-mode>  load={time.time()-t0:.1f}s")
 
     # ---- Load actions + episode metadata ----
     print("[train] loading actions + episode boundaries…")
@@ -214,24 +388,42 @@ def main():
     print(f"[train]   action mean : {scaler.mean_.round(4).tolist()}")
     print(f"[train]   action scale: {scaler.scale_.round(4).tolist()}")
 
+    # ---- Rebuttal §5: episode-level action corruption (train range only) ----
+    if args.corrupt_ep_frac > 0.0:
+        c_rng = np.random.default_rng(args.seed)
+        train_ep_ids = np.arange(train_ep_lo, train_ep_hi)
+        n_corrupt = int(round(args.corrupt_ep_frac * len(train_ep_ids)))
+        corrupt_eps = c_rng.choice(train_ep_ids, size=n_corrupt, replace=False)
+        a_lo = np.nanmin(actions, axis=0)
+        a_hi = np.nanmax(actions, axis=0)
+        for e in corrupt_eps:
+            off, ln = int(ep_offset[e]), int(ep_len[e])
+            keep_nan = np.isnan(actions[off : off + ln]).any(axis=1)
+            rand_seq = c_rng.uniform(a_lo, a_hi, size=(ln, A_raw)).astype(np.float32)
+            rand_seq[keep_nan] = np.nan  # preserve episode-boundary NaN markers
+            actions[off : off + ln] = rand_seq
+        print(f"[train] CORRUPTION: replaced actions of {n_corrupt}/{len(train_ep_ids)} "
+              f"train episodes ({100*args.corrupt_ep_frac:.0f}%) with uniform-random; "
+              f"scaler remains clean-fit; val untouched")
+
     # ---- Build train/val window indices ----
     print("[train] building window indices…")
     t0 = time.time()
-    train_starts, train_eps = build_window_indices(ep_offset, ep_len, train_ep_lo, train_ep_hi)
-    val_starts, val_eps = build_window_indices(ep_offset, ep_len, val_ep_lo, val_ep_hi)
+    train_starts, train_eps = build_window_indices(ep_offset, ep_len, train_ep_lo, train_ep_hi, win_len=WIN_LEN_LOCAL)
+    val_starts, val_eps = build_window_indices(ep_offset, ep_len, val_ep_lo, val_ep_hi, win_len=WIN_LEN_LOCAL)
     print(f"[train]   train windows = {len(train_starts):>8d}")
     print(f"[train]   val   windows = {len(val_starts):>8d}  build={time.time()-t0:.1f}s")
 
-    # ---- Pre-compute normalized action targets (M, H, A_block, A_raw) ----
+    # ---- Pre-compute normalized action targets (M, H_local, A_block, A_raw) ----
     print("[train] pre-computing normalized action targets…")
     t0 = time.time()
 
     def compute_targets(starts):
-        idx = starts[:, None] + np.arange(WIN_LEN, dtype=np.int64)[None, :]  # (M, 25)
-        seqs = actions[idx]  # (M, 25, A_raw)
+        idx = starts[:, None] + np.arange(WIN_LEN_LOCAL, dtype=np.int64)[None, :]  # (M, WIN_LEN_LOCAL)
+        seqs = actions[idx]  # (M, WIN_LEN_LOCAL, A_raw)
         flat = seqs.reshape(-1, A_raw)
         flat_norm = scaler.transform(flat).astype(np.float32)
-        return flat_norm.reshape(-1, H, A_BLOCK, A_raw)
+        return flat_norm.reshape(-1, H_LOCAL, A_BLOCK, A_raw)
 
     train_targets = compute_targets(train_starts)
     val_targets = compute_targets(val_starts)
@@ -244,7 +436,10 @@ def main():
     print("[train] moving tensors to GPU…")
     t0 = time.time()
     feats_gpu = torch.from_numpy(np.asarray(features, dtype=np.float32)).to(device)
-    goals_gpu = torch.from_numpy(np.asarray(goals, dtype=np.float32)).to(device)
+    if GOAL_MODE == "endframe":
+        goals_gpu = torch.from_numpy(np.asarray(goals, dtype=np.float32)).to(device)
+    else:
+        goals_gpu = None  # offset mode looks up via feats_gpu
     train_starts_gpu = torch.from_numpy(train_starts).to(device)
     train_eps_gpu = torch.from_numpy(train_eps).to(device)
     train_targets_gpu = torch.from_numpy(train_targets).to(device)
@@ -253,14 +448,21 @@ def main():
     val_targets_gpu = torch.from_numpy(val_targets).to(device)
     gpu_mb = (
         feats_gpu.element_size() * feats_gpu.numel()
-        + goals_gpu.element_size() * goals_gpu.numel()
+        + (goals_gpu.element_size() * goals_gpu.numel() if goals_gpu is not None else 0)
         + train_targets_gpu.element_size() * train_targets_gpu.numel()
         + val_targets_gpu.element_size() * val_targets_gpu.numel()
     ) / 1e6
     print(f"[train]   GPU residency: {gpu_mb:.0f} MB  move={time.time()-t0:.1f}s")
 
+    # ---- Helper: look up z_g for a batch of sample indices ----
+    def lookup_zg(starts_batch, eps_batch):
+        """starts_batch: per-sample frame start indices; eps_batch: per-sample ep IDs."""
+        if GOAL_MODE == "offset":
+            return feats_gpu[starts_batch + OFFSET]    # per-sample short-horizon hindsight goal
+        return goals_gpu[eps_batch]                     # per-ep endframe goal (sim convention)
+
     # ---- Build head ----
-    head = PriorHead(z_dim=D, H=H, A_block=A_BLOCK, A_raw=A_raw).to(device)
+    head = PriorHead(z_dim=D, H=H_LOCAL, A_block=A_BLOCK, A_raw=A_raw).to(device)
     n_params = sum(p.numel() for p in head.parameters())
     print(f"[train] PriorHead params: {n_params/1e6:.2f}M  ({n_params:,})")
 
@@ -281,7 +483,7 @@ def main():
         for s in range(0, n_val, bs):
             e = min(s + bs, n_val)
             zt = feats_gpu[val_starts_gpu[s:e]]
-            zg = goals_gpu[val_eps_gpu[s:e]]
+            zg = lookup_zg(val_starts_gpu[s:e], val_eps_gpu[s:e])
             tgt = val_targets_gpu[s:e]
             mu, sg = head(zt, zg)
             nll = beta_nll_loss(mu, sg, tgt, beta=args.beta).item()
@@ -313,7 +515,7 @@ def main():
         for s in range(0, n_train, args.batch):
             idx = perm[s:s + args.batch]
             zt = feats_gpu[train_starts_gpu[idx]]
-            zg = goals_gpu[train_eps_gpu[idx]]
+            zg = lookup_zg(train_starts_gpu[idx], train_eps_gpu[idx])
             tgt = train_targets_gpu[idx]
             mu, sg = head(zt, zg)
             loss = beta_nll_loss(mu, sg, tgt, beta=args.beta)
@@ -371,8 +573,11 @@ def main():
         print(f"\n[train] HARD GATE FAIL: best val MSE only dropped "
               f"{100*relative_drop:.1f}% from init "
               f"({init_val_mse:.4f} → {best_val_mse:.4f}; need ≥15%). "
-              f"Head not learning real structure. NOT SAVING.")
-        return
+              f"Head not learning real structure.")
+        if not args.force_save:
+            print(f"[train] NOT SAVING. Re-run with --force-save to override.")
+            return
+        print(f"[train] --force-save set; continuing to save the broken ckpt.")
 
     # Train NLL monotonicity check up to best epoch (with noise tol).
     train_nll_up_to_best = [h["train_nll"] for h in history if h["epoch"] <= best_epoch]
@@ -385,8 +590,11 @@ def main():
         if bumps:
             rises = [(b + 1, train_nll_up_to_best[b - 1], train_nll_up_to_best[b]) for b in bumps]
             print(f"\n[train] HARD GATE FAIL: train NLL not monotonically decreasing "
-                  f"through best epoch ({best_epoch}). Bumps: {rises}. NOT SAVING.")
-            return
+                  f"through best epoch ({best_epoch}). Bumps: {rises}.")
+            if not args.force_save:
+                print(f"[train] NOT SAVING. Re-run with --force-save to override.")
+                return
+            print(f"[train] --force-save set; continuing.")
 
     print(f"\n[train] HARD GATES PASSED:")
     print(f"   • best val MSE drop = {100*relative_drop:.1f}% (≥15%)")
@@ -413,7 +621,7 @@ def main():
         for s in range(0, n_val, bs):
             e = min(s + bs, n_val)
             zt = feats_gpu[val_starts_gpu[s:e]]
-            zg = goals_gpu[val_eps_gpu[s:e]]
+            zg = lookup_zg(val_starts_gpu[s:e], val_eps_gpu[s:e])
             _, sg = head(zt, zg)
             sigmas.append(sg.flatten().cpu())
             per_dim_sigmas.append(sg.cpu())
@@ -452,8 +660,8 @@ def main():
         return
 
     # Per-step structure: does σ change across plan-steps?
-    per_step_mean = sigma_full.mean(dim=(0, 2, 3))  # collapse over batch, A_block, A_raw → (H,)
-    print(f"  σ-mean per plan step (H={H}): "
+    per_step_mean = sigma_full.mean(dim=(0, 2, 3))  # collapse over batch, A_block, A_raw → (H_LOCAL,)
+    print(f"  σ-mean per plan step (H={H_LOCAL}): "
           f"{[round(x, 4) for x in per_step_mean.tolist()]}")
 
     # Verdict
@@ -474,8 +682,10 @@ def main():
     # ---- All gates passed — save the checkpoint ----
     torch.save({
         "state_dict": best_state,
-        "config": dict(z_dim=int(D), H=H, A_block=A_BLOCK, A_raw=A_raw,
+        "config": dict(z_dim=int(D), H=H_LOCAL, A_block=A_BLOCK, A_raw=A_raw,
                        hidden=512, sigma_floor=0.05),
+        "goal_mode": GOAL_MODE,
+        "offset": OFFSET,
         "scaler_mean": scaler.mean_.tolist(),
         "scaler_scale": scaler.scale_.tolist(),
         "best_val_nll": best_val_nll,
