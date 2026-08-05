@@ -64,7 +64,7 @@ class PrismMPPISolver(MPPISolver):
         injection_mode:    one of {'pog', 'warm_start', 'none'}
     """
 
-    VALID_MODES = ('pog', 'warm_start', 'none')
+    VALID_MODES = ('pog', 'warm_start', 'none', 'replace')
 
     def __init__(
         self,
@@ -119,6 +119,17 @@ class PrismMPPISolver(MPPISolver):
         mu_p = self._prior_mean.to(mean.device, dtype=mean.dtype)
         if mu_p.shape != mean.shape:
             mu_p = mu_p.expand_as(mean)
+
+        if self.injection_mode == 'replace':
+            # PiJEPA-style policy-guided init (rebuttal hybrid (b)): REPLACE both
+            # the planner's init mean and std with the policy-prior moments.
+            # No PoG fusion — this is the faithful reproduction of
+            # chahe2026pijepa's "empirical mean and (clamped) std as MPPI init".
+            assert self._prior_sigma is not None, "replace mode requires sigma"
+            sg_p = self._prior_sigma.to(std.device, dtype=std.dtype)
+            if sg_p.shape != std.shape:
+                sg_p = sg_p.expand_as(std)
+            return mu_p, sg_p.clamp(min=self.sigma_floor)
 
         if self.injection_mode == 'warm_start':
             # ABLATION ROW: head's σ_p is INTENTIONALLY UNUSED here. We replace
