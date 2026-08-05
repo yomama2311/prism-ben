@@ -1,0 +1,7 @@
+task	seed	sr
+pusht	0	90.0
+pusht	1	94.0
+pusht	42	82.0
+cube	0	100.0
+cube	1	100.0
+cube	42	100.0

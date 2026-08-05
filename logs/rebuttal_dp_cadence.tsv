@@ -1,0 +1,7 @@
+task	n_action_steps	seed	sr
+pusht	25	0	98.0
+pusht	25	1	88.0
+pusht	25	42	94.0
+cube	25	0	98.0
+cube	25	1	100.0
+cube	25	42	100.0
