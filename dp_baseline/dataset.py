@@ -59,6 +59,7 @@ class DPDataset(Dataset):
         h5_path: str | Path,
         action_horizon: int = 25,
         corrupt_ep_frac: float = 0.0,
+        random_goal_offset: bool = False,
         goal_offset_steps: int = 25,
         split: str = "train",
         val_ratio: float = 0.02,
@@ -108,6 +109,15 @@ class DPDataset(Dataset):
         # the train/eval goal-distribution mismatch that hurt the previous
         # end-of-episode goal setup.
         self.goal_indices = self.starts + goal_offset_steps
+        # Rebuttal: data-side fix for the goal-distance mismatch. Training pairs
+        # are then drawn with goal distances k ~ U{1..goal_offset_steps}, which
+        # covers every separation a receding-horizon rollout can induce
+        # (T_a=8 with a t+25 goal asks about 25/17/9/1). The action target stays
+        # a[t:t+T_a], matching what the policy must emit at deployment.
+        self.random_goal_offset = random_goal_offset
+        self.max_goal_offset = int(goal_offset_steps)
+        if random_goal_offset and split == "train":
+            print(f"[DPDataset] RANDOM GOAL OFFSET: k ~ U{{1..{self.max_goal_offset}}} per sample")
 
         # ---- Action normalization (compute on training split only) ----
         if split == "train":
@@ -183,7 +193,11 @@ class DPDataset(Dataset):
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         start = int(self.starts[idx])
-        goal_idx = int(self.goal_indices[idx])
+        if getattr(self, "random_goal_offset", False) and self.split == "train":
+            k = int(np.random.randint(1, self.max_goal_offset + 1))
+            goal_idx = start + k
+        else:
+            goal_idx = int(self.goal_indices[idx])
 
         f = self._h5()
 
