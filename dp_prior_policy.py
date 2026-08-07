@@ -53,6 +53,7 @@ class DPPriorPolicy(WorldModelPolicy):
         injection_mode: str = "pog",
         n_dp_samples: int = 16,
         sigma_scale: float = 1.0,
+        sigma_clamp_max: float = float('inf'),
         num_inference_steps: int = 10,
         use_ema: bool = True,
         device: str = "cuda",
@@ -99,6 +100,7 @@ class DPPriorPolicy(WorldModelPolicy):
         solver_mode = "none" if injection_mode == "best_of_n" else injection_mode
         self.solver.injection_mode = solver_mode
         self.solver.prior_sigma_scale = sigma_scale
+        self.solver.prior_sigma_clamp_max = sigma_clamp_max
 
         self._im_mean = _IMAGENET_MEAN.to(device)
         self._im_std = _IMAGENET_STD.to(device)

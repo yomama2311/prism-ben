@@ -70,6 +70,7 @@ def run(cfg: DictConfig):
     injection_mode = dp_cfg.get("injection_mode", "pog")
     n_dp_samples = dp_cfg.get("n_dp_samples", 16)
     sigma_scale = dp_cfg.get("sigma_scale", 1.0)
+    sigma_clamp_max = float(dp_cfg.get("sigma_clamp_max", float("inf")))
     dp_ckpt = dp_cfg.get("ckpt", None)
     assert dp_ckpt is not None, "Pass +dpprior.ckpt=<dp_baseline_<task>.pt>"
 
@@ -77,6 +78,7 @@ def run(cfg: DictConfig):
     print(f"  DP-prior hybrid eval — MODE = {injection_mode!r}")
     print(f"  n_dp_samples   = {n_dp_samples}")
     print(f"  sigma_scale    = {sigma_scale}")
+    print(f"  sigma_clamp_max= {sigma_clamp_max}")
     print(f"  dp_ckpt        = {dp_ckpt}")
     print(f"  num_eval       = {cfg.eval.num_eval}")
     print(f"  policy         = {cfg.policy}")
@@ -122,6 +124,7 @@ def run(cfg: DictConfig):
         injection_mode=injection_mode,
         n_dp_samples=n_dp_samples,
         sigma_scale=sigma_scale,
+        sigma_clamp_max=sigma_clamp_max,
         device="cuda",
         verbose=True,
     )

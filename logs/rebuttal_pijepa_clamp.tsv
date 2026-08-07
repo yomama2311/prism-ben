@@ -1,0 +1,13 @@
+task	ckpt	clamp	seed	sr
+pusht	corrupt50	0.5	0	84.0
+pusht	corrupt50	0.5	1	78.0
+pusht	corrupt50	0.5	42	82.0
+pusht	corrupt50	1.0	0	72.0
+pusht	corrupt50	1.0	1	60.0
+pusht	corrupt50	1.0	42	60.0
+pusht	corrupt50	2.0	0	26.0
+pusht	corrupt50	2.0	1	30.0
+pusht	corrupt50	2.0	42	34.0
+pusht	clean	1.0	0	98.0
+pusht	clean	1.0	1	94.0
+pusht	clean	1.0	42	98.0

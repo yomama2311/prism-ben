@@ -71,6 +71,7 @@ class PrismMPPISolver(MPPISolver):
         *args,
         sigma_floor: float = 0.05,
         prior_sigma_scale: float = 1.0,
+        prior_sigma_clamp_max: float = float('inf'),
         injection_mode: str = 'pog',
         **kwargs,
     ) -> None:
@@ -79,6 +80,11 @@ class PrismMPPISolver(MPPISolver):
             f"injection_mode must be one of {self.VALID_MODES}, got {injection_mode!r}"
         self.sigma_floor = sigma_floor
         self.prior_sigma_scale = prior_sigma_scale
+        # Upper clamp on the prior std, used by 'replace' (PiJEPA-style) mode.
+        # PiJEPA specifies a *clamped* empirical std; with a degraded policy the
+        # raw sample std can exceed the planner's own var_scale several-fold, so
+        # this bound is the baseline's safety mechanism and must be swept.
+        self.prior_sigma_clamp_max = prior_sigma_clamp_max
         self.injection_mode = injection_mode
         self._prior_mean = None   # (n_envs, horizon, action_dim) tensor
         self._prior_sigma = None  # same shape; absolute units (already scaled)
@@ -129,7 +135,7 @@ class PrismMPPISolver(MPPISolver):
             sg_p = self._prior_sigma.to(std.device, dtype=std.dtype)
             if sg_p.shape != std.shape:
                 sg_p = sg_p.expand_as(std)
-            return mu_p, sg_p.clamp(min=self.sigma_floor)
+            return mu_p, sg_p.clamp(min=self.sigma_floor, max=self.prior_sigma_clamp_max)
 
         if self.injection_mode == 'warm_start':
             # ABLATION ROW: head's σ_p is INTENTIONALLY UNUSED here. We replace
