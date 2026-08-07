@@ -1,0 +1,7 @@
+task	train	Ta	seed	sr
+pusht	randomgoal	25	0	90.0
+pusht	randomgoal	25	1	82.0
+pusht	randomgoal	25	42	82.0
+pusht	randomgoal	8	0	94.0
+pusht	randomgoal	8	1	94.0
+pusht	randomgoal	8	42	84.0

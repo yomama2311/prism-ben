@@ -11,3 +11,13 @@ pusht	corrupt50	2.0	42	34.0
 pusht	clean	1.0	0	98.0
 pusht	clean	1.0	1	94.0
 pusht	clean	1.0	42	98.0
+pusht	corrupt50	1.0	2	54.0
+pusht	corrupt50	1.0	3	57.99999999999999
+pusht	corrupt50	1.0	4	54.0
+pusht	corrupt50	1.0	5	60.0
+pusht	corrupt50	1.0	6	72.0
+pusht	corrupt50	1.0	7	72.0
+pusht	corrupt50	1.0	8	72.0
+cube	clean	1.0	0	96.0
+cube	clean	1.0	1	100.0
+cube	clean	1.0	42	96.0

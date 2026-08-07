@@ -2,3 +2,6 @@ task	eps	seed	sr
 pusht	50	0	57.99999999999999
 pusht	50	1	60.0
 pusht	50	42	48.0
+cube	50	0	82.0
+cube	50	1	78.0
+cube	50	42	74.0
