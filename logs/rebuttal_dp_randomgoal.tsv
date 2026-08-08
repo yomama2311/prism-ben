@@ -5,3 +5,9 @@ pusht	randomgoal	25	42	82.0
 pusht	randomgoal	8	0	94.0
 pusht	randomgoal	8	1	94.0
 pusht	randomgoal	8	42	84.0
+cube	randomgoal	8	0	100.0
+cube	randomgoal	8	1	100.0
+cube	randomgoal	8	42	98.0
+cube	randomgoal	25	0	100.0
+cube	randomgoal	25	1	100.0
+cube	randomgoal	25	42	100.0
