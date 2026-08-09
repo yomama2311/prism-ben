@@ -28,6 +28,12 @@ TASKS = {
         "h5": "ogbench/cube_single_expert.h5",
         "ckpt": "cube/lewm_object.ckpt",
     },
+    "cube_double": {
+        # rebuttal: third task (two blocks, multi-stage). WM trained here on a
+        # reduced budget (3000 episodes, 20 epochs) -- see docs.
+        "h5": "ogbench/cube_double_expert.h5",
+        "ckpt": "cube_double/lewm_object.ckpt",
+    },
     "pusht": {
         "h5": "pusht_expert_train.h5",
         "ckpt": "pusht/lewm_object.ckpt",
@@ -39,6 +45,87 @@ TASKS = {
     "tworoom": {
         "h5": "tworoom.h5",
         "ckpt": "tworooms/lewm_object.ckpt",
+    },
+    "arx": {
+        # ARX-X5 real-robot left-arm cube task, 201 demos from
+        # huggingface://Xia-2004/arx-left-cube. The h5 has an explicit
+        # `goal_pixels` field per episode (the task goal image), so the
+        # goal-cache encodes that field directly rather than the default
+        # last-frame-of-episode index.
+        "h5": "arx_left_cube.h5",
+        "ckpt": "lewm_arx_epoch_100_object.ckpt",
+    },
+    "red_cube": {
+        # ARX-X5 red-cube task, 201 demos from huggingface://Xia-2004/red_cube
+        # (single camera_third, format yuhai_left_single_v1). Same converter/schema
+        # as arx (explicit goal_pixels per episode). Paired with the vanilla fs5 WM.
+        "h5": "red_cube.h5",
+        "ckpt": "lewm_red_cube_epoch_100_object.ckpt",
+    },
+    "franka_pusht": {
+        # Franka FR3 real-robot planar PushT, 36 live-curated demos from
+        # huggingface://Rongxuan-Zhou/pusht-franka-lewm (8,790 frames @ 10 Hz).
+        # No explicit goal_pixels field; goal embedding will fall back to the
+        # last-frame-of-episode convention.
+        "h5": "franka_pusht.h5",
+        "ckpt": "lewm_franka_pusht_epoch_100_object.ckpt",
+    },
+    "pusht_lewm_fr3": {
+        # Franka FR3 PushT, v2 — 50 demos from
+        # huggingface://Rongxuan-Zhou/pusht_lewm_fr3 (18,014 frames @ 10 Hz).
+        # New scene: T more prominent, arm less dominant. Same h5 schema as v1.
+        "h5": "pusht_lewm_fr3.h5",
+        "ckpt": "lewm_pusht_lewm_fr3_epoch_100_object.ckpt",
+    },
+    "pusht_lewm_fr3_v1_full2d": {
+        # H4 V1 — full predictor (10.79M) + 2D action, 100 epoch fresh.
+        "h5": "pusht_lewm_fr3_2d.h5",
+        "ckpt": "lewm_pusht_lewm_fr3_v1_full2d_epoch_100_object.ckpt",
+    },
+    "pusht_lewm_fr3_v2_small2d": {
+        # H4 V2 — small predictor (1.14M, depth=2/heads=4/mlp=512) + 2D action,
+        # 100 epoch fresh.
+        "h5": "pusht_lewm_fr3_2d.h5",
+        "ckpt": "lewm_pusht_lewm_fr3_v2_small2d_epoch_100_object.ckpt",
+    },
+    "pusht_lewm_fr3_v3_full2d": {
+        # v3 — LeWM-default predictor (10.79M) + 2D action + 200 demos / 51k frames.
+        # Fresh training on the updated pusht_lewm_fr3 dataset (commit 298b3f0).
+        "h5": "pusht_lewm_fr3_2d.h5",
+        "ckpt": "lewm_pusht_lewm_fr3_v3_full2d_epoch_100_object.ckpt",
+    },
+    "pusht_lewm_fr3_v4b": {
+        # v4b — multi-step autoregressive supervision (num_preds=3, lr 2e-5,
+        # predictor.dropout=0.0). 30 epoch on the same 200-demo data.
+        # Cost-surface CV = 0.286 (vs v3 0.132, 2.17x improvement).
+        "h5": "pusht_lewm_fr3_2d.h5",
+        "ckpt": "lewm_pusht_lewm_fr3_v4b_epoch_30_object.ckpt",
+    },
+    "pusht_lewm_fr3_v3_short15": {
+        # v3 (NEW NAMING; not the same as v3_full2d above) — 411 demos / 94k frames
+        # from Rongxuan-Zhou/pusht_lewm_fr3 v3 snapshot. Trained at concat / num_preds=1.
+        # Goal-mode = offset 15 (= H_deploy 3 × A_BLOCK 5) → per-sample short-horizon
+        # hindsight goals z_g = features[t + 15]. See docs/35 for rationale.
+        "h5": "pusht_lewm_fr3_2d_v3.h5",
+        "ckpt": "lewm_pusht_fr3_2d_v3_e100_epoch_100_object.ckpt",
+        "goal_mode": "offset",
+        "offset": 15,
+    },
+    "pusht_lewm_fr3_v3_short25": {
+        # Same v3 ckpt + dataset; OFFSET=25 (= sim H=5 × A_BLOCK=5).
+        # Tests "does z_g being further from z_t help by widening the latent
+        # condition signal?" — see docs/35 §results follow-up.
+        "h5": "pusht_lewm_fr3_2d_v3.h5",
+        "ckpt": "lewm_pusht_fr3_2d_v3_e100_epoch_100_object.ckpt",
+        "goal_mode": "offset",
+        "offset": 25,
+    },
+    "pusht_lewm_fr3_v3_endframe": {
+        # Same v3 ckpt + dataset; endframe goal (sim convention) — z_g = ep last frame.
+        # Tests the "deep convention" against short-offset variants.
+        "h5": "pusht_lewm_fr3_2d_v3.h5",
+        "ckpt": "lewm_pusht_fr3_2d_v3_e100_epoch_100_object.ckpt",
+        "goal_mode": "endframe",
     },
 }
 
@@ -61,6 +148,13 @@ def main():
     ap.add_argument("--batch", type=int, default=128)
     ap.add_argument("--dry-run", action="store_true",
                     help="Process only the first 5 episodes to verify schema.")
+    ap.add_argument("--goal-mode", choices=["endframe", "offset"], default=None,
+                    help="endframe = per-episode last frame (sim convention, default if task "
+                         "has no goal_mode set). offset = per-sample short-horizon hindsight "
+                         "goal (skips goals.npy, train_prior_head reads via goal_meta.json).")
+    ap.add_argument("--offset", type=int, default=None,
+                    help="When --goal-mode=offset, sets z_g = features[t + offset]. "
+                         "Defaults to task's offset, or 15 (= 3 plan-steps × A_BLOCK 5).")
     args = ap.parse_args()
 
     stable_home = Path(os.environ.get(
@@ -71,6 +165,11 @@ def main():
     ckpt_path = stable_home / cfg["ckpt"]
     out_dir = stable_home / "jepa_cache" / args.task
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Goal-mode resolution: CLI overrides task default; default is endframe.
+    goal_mode = args.goal_mode or cfg.get("goal_mode", "endframe")
+    offset = args.offset if args.offset is not None else cfg.get("offset", 15)
+    print(f"[jepa-cache] goal_mode={goal_mode}  offset={offset if goal_mode == 'offset' else 'n/a'}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"[jepa-cache] task={args.task}")
@@ -164,11 +263,41 @@ def main():
     print(f"\n[jepa-cache] features done. {n_done} frames in {elapsed/60:.1f} min "
           f"({n_done/elapsed:.0f} fr/s)")
 
-    # Build goals.npy by indexing the features memmap
-    goals = features[goal_indices].copy()  # small read; fine in RAM
-    goals_path = out_dir / ("goals.npy" if not args.dry_run else "goals_dry.npy")
-    np.save(goals_path, goals)
-    print(f"[jepa-cache] goals.npy: shape={goals.shape}  → {goals_path}")
+    # Build goals.npy (endframe mode only). In offset mode, train_prior_head
+    # looks up z_g per-sample as features[t + offset] using goal_meta.json.
+    if goal_mode == "offset":
+        meta = {"goal_mode": "offset", "offset": int(offset)}
+        meta_path = out_dir / "goal_meta.json"
+        json.dump(meta, open(meta_path, "w"), indent=2)
+        print(f"[jepa-cache] goal_mode=offset(={offset}): no goals.npy emitted. "
+              f"Wrote {meta_path}")
+    else:
+        # Endframe mode (default; sim convention).
+        # If the h5 has a `goal_pixels` field (e.g. our ARX dataset), encode that
+        # directly through the same encoder so the goal embedding represents the
+        # *task goal image*, not the last-state-in-the-demo.
+        with h5py.File(h5_path, "r") as f_goal:
+            if "goal_pixels" in f_goal:
+                gp = f_goal["goal_pixels"][:n_episodes_use]  # (n_ep, 224, 224, 3)
+                print(f"[jepa-cache] using explicit goal_pixels field: shape={gp.shape}")
+                goal_feats = []
+                with torch.no_grad():
+                    for s in range(0, len(gp), args.batch):
+                        b = gp[s:s + args.batch]
+                        inputs = normalize_uint8_batch(b, device)
+                        out = encoder(inputs, interpolate_pos_encoding=True)
+                        cls = out.last_hidden_state[:, 0]
+                        emb = projector(cls)
+                        goal_feats.append(emb.to(torch.float16).cpu().numpy())
+                goals = np.concatenate(goal_feats, axis=0)
+            else:
+                goals = features[goal_indices].copy()  # last-frame fallback
+        goals_path = out_dir / ("goals.npy" if not args.dry_run else "goals_dry.npy")
+        np.save(goals_path, goals)
+        print(f"[jepa-cache] goals.npy: shape={goals.shape}  → {goals_path}")
+        # Also write goal_meta.json for endframe (so train_prior_head can dispatch uniformly)
+        meta = {"goal_mode": "endframe"}
+        json.dump(meta, open(out_dir / "goal_meta.json", "w"), indent=2)
 
     # Sanity prints (the GATE).
     print("\n=== Sanity (the gate) ===")
@@ -193,10 +322,13 @@ def main():
           f"max={float(per_dim_mean.max()):.4f}")
     print(f"  dead dims (std<1e-4): {n_dead}/{hidden_dim}")
 
-    # Goal sanity
-    g_norms = np.linalg.norm(goals.astype(np.float32), axis=1)
-    print(f"  goals L2: min={float(g_norms.min()):.3f}  "
-          f"max={float(g_norms.max()):.3f}  mean={float(g_norms.mean()):.3f}")
+    # Goal sanity (endframe only — in offset mode goals are looked up at train time)
+    if goal_mode == "endframe":
+        g_norms = np.linalg.norm(goals.astype(np.float32), axis=1)
+        print(f"  goals L2: min={float(g_norms.min()):.3f}  "
+              f"max={float(g_norms.max()):.3f}  mean={float(g_norms.mean()):.3f}")
+    else:
+        print(f"  goals: offset-mode (offset={offset}) — sampled at train time as features[t+{offset}]")
 
     # GATE: catastrophic-failure detection. Soft warnings vs hard stops.
     gate_pass = True

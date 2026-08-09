@@ -1,0 +1,13 @@
+task	mode	K	seed	sr
+pusht	pog	32	0	62.0
+pusht	pog	32	1	56.00000000000001
+pusht	pog	32	42	54.0
+pusht	replace	32	0	62.0
+pusht	replace	32	1	54.0
+pusht	replace	32	42	64.0
+cube	pog	32	0	57.99999999999999
+cube	pog	32	1	46.0
+cube	pog	32	42	57.99999999999999
+cube	replace	32	0	62.0
+cube	replace	32	1	48.0
+cube	replace	32	42	57.99999999999999

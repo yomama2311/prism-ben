@@ -102,6 +102,14 @@ TASKS = {
         train_ep_range=(0, 9000),
         val_ep_range=(9000, 10000),
     ),
+    "cube_double": dict(
+        h5=f"{STABLE_HOME}/ogbench/cube_double_expert.h5",
+        cache_dir=f"{STABLE_HOME}/jepa_cache/cube_double",
+        out_path="/home/yuhai/project/prism-jepa/prior_head_cube_double.pt",
+        # 3000 episodes: train [0, 2700), val [2700, 3000)  (90/10, as elsewhere)
+        train_ep_range=(0, 2700),
+        val_ep_range=(2700, 3000),
+    ),
     "pusht": dict(
         h5=f"{STABLE_HOME}/pusht_expert_train.h5",
         cache_dir=f"{STABLE_HOME}/jepa_cache/pusht",

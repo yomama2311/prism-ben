@@ -1,0 +1,7 @@
+task	method	K	seed	sr
+cube_double	vanilla	128	0	0.0
+cube_double	prism	128	0	NA
+cube_double	vanilla	128	1	2.0
+cube_double	prism	128	1	NA
+cube_double	vanilla	128	42	6.0
+cube_double	prism	128	42	NA

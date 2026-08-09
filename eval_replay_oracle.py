@@ -45,6 +45,7 @@ from prism_mppi import PrismMPPISolver  # noqa: E402
 H5_BY_TASK = {
     "pusht": "pusht_expert_train.h5",
     "cube": "ogbench/cube_single_expert.h5",
+    "cube_double": "ogbench/cube_double_expert.h5",
 }
 
 
