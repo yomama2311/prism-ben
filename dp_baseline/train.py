@@ -100,6 +100,9 @@ def main():
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--out", default=None,
                     help="output ckpt path (default: dp_baseline_<task>.pt)")
+    ap.add_argument("--endframe-goal", action="store_true",
+                    help="Rebuttal: goal = each episode's last frame (the original "
+                         "pre-fix convention, 75-175 steps beyond the eval goal)")
     ap.add_argument("--random-goal-offset", action="store_true",
                     help="Rebuttal: sample the goal distance k ~ U{1..goal_offset_steps} "
                          "per training sample so the training distribution covers the "
@@ -129,7 +132,8 @@ def main():
                          goal_offset_steps=args.goal_offset_steps,
                          split="train", seed=args.seed,
                          corrupt_ep_frac=args.corrupt_ep_frac,
-                         random_goal_offset=args.random_goal_offset)
+                         random_goal_offset=args.random_goal_offset,
+                         endframe_goal=args.endframe_goal)
     val_ds = DPDataset(cfg["h5"], action_horizon=args.action_horizon,
                        goal_offset_steps=args.goal_offset_steps,
                        split="val", seed=args.seed)

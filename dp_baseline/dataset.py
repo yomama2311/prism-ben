@@ -60,6 +60,7 @@ class DPDataset(Dataset):
         action_horizon: int = 25,
         corrupt_ep_frac: float = 0.0,
         random_goal_offset: bool = False,
+        endframe_goal: bool = False,
         goal_offset_steps: int = 25,
         split: str = "train",
         val_ratio: float = 0.02,
@@ -114,6 +115,17 @@ class DPDataset(Dataset):
         # covers every separation a receding-horizon rollout can induce
         # (T_a=8 with a t+25 goal asks about 25/17/9/1). The action target stays
         # a[t:t+T_a], matching what the policy must emit at deployment.
+        # Rebuttal: reproduce the original (pre-fix) convention in which the goal
+        # is each episode's last frame, i.e. 75-175 env-steps beyond the eval
+        # goal. This is the first point of the goal-distance curve in S2.
+        self.endframe_goal = endframe_goal
+        if endframe_goal:
+            self.goal_indices = (self.ep_offset[self.eps]
+                                 + self.ep_len[self.eps] - 1).astype(np.int64)
+            if split == "train":
+                gap = self.goal_indices - self.starts
+                print(f"[DPDataset] ENDFRAME GOAL: goal = episode last frame; "
+                      f"distance mean={gap.mean():.1f} min={gap.min()} max={gap.max()} env-steps")
         self.random_goal_offset = random_goal_offset
         self.max_goal_offset = int(goal_offset_steps)
         if random_goal_offset and split == "train":
