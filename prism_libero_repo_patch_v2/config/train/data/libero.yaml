@@ -1,0 +1,9 @@
+kind: libero_raw
+val_fraction: 0.1
+dataset:
+  # EDIT THIS: folder containing original LIBERO data/demo_*/obs HDF5 files.
+  # Recursive search supports nested directories. Do not use converted libero_train.h5.
+  root: /workspace/FA26_RE/datasets/libero_object
+  frameskip: 5
+  camera: agentview_rgb
+  flip_vertical: false

@@ -1,0 +1,32 @@
+defaults:
+  - lewm
+  - override data: libero
+  - _self_
+
+# EDIT THIS if you want a different output location. Must be a NEW run folder.
+output_dir: /workspace/prism-ben/stablewm/lewm_libero_object_scratch
+output_model_name: lewm_libero_object
+subdir: libero_object_scratch
+num_workers: 4
+wandb:
+  enabled: false
+trainer:
+  devices: 1
+  accelerator: gpu
+  precision: bf16-mixed
+  max_epochs: 100
+  check_val_every_n_epoch: 1
+  val_check_interval: 1.0
+loader:
+  batch_size: 128
+  prefetch_factor: 2
+
+# MSE here is prediction error in latent space, not image/pixel MSE.
+checkpoint:
+  monitor: val/mse
+  every_n_epochs: 10
+
+early_stopping:
+  enabled: true
+  patience: 15
+  min_delta: 0.0001
