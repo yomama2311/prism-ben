@@ -1,0 +1,14 @@
+# Copy as repo_root/config/train/data/libero_managed.yaml (do not overwrite data/libero.yaml).
+# Required: export LIBERO_TRAIN_H5=/absolute/path/to/train.h5
+# Optional episode-disjoint val: export LIBERO_VAL_H5=/absolute/path/to/val.h5
+dataset:
+  num_steps: ${eval:'${wm.num_preds} + ${wm.history_size}'}
+  frameskip: 5
+  path: ${oc.env:LIBERO_TRAIN_H5}
+  keys_to_load:
+    - pixels
+    - action
+    - proprio
+  keys_to_cache:
+    - action
+    - proprio
