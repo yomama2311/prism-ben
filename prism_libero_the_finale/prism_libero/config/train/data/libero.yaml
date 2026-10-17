@@ -1,0 +1,12 @@
+# Hydra data config for LeWM train.py   ->  python train.py data=libero data.dataset.name=libero/libero_spatial
+dataset:
+  num_steps: ${eval:'${wm.num_preds} + ${wm.history_size}'}
+  frameskip: 5            # 1 plan-step = 5 env steps (LIBERO control freq = 20 Hz)
+  name: libero/libero_spatial   # -> $STABLEWM_HOME/libero/libero_spatial.h5
+  keys_to_load:
+    - pixels
+    - action
+    - proprio
+  keys_to_cache:
+    - action
+    - proprio
