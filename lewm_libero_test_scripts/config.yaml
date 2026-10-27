@@ -1,0 +1,92 @@
+output_model_name: lewm
+run_id: open_loop_batch_sequencelen_200
+checkpoint_root: /project/peilab/qjl/2026/le-wm/checkpoint
+sequence_len: 204
+pretrained_ckpt: /project/peilab/qjl/2026/le-wm/checkpoint/1_step_teacherforcing/lewm_weights.ckpt
+num_workers: 6
+train_split: 0.9
+seed: 3072
+img_size: 224
+patch_size: 14
+encoder_scale: tiny
+dump_object: true
+data_preview_count: 0
+trainer:
+  max_epochs: 60
+  devices: auto
+  accelerator: gpu
+  precision: bf16
+  gradient_clip_val: 1.0
+  log_every_n_steps: 1
+loader:
+  batch_size: 8
+  num_workers: ${num_workers}
+  persistent_workers: true
+  prefetch_factor: 3
+  pin_memory: true
+optimizer:
+  type: AdamW
+  lr: 5.0e-05
+  weight_decay: 0.001
+wandb:
+  enabled: true
+  config:
+    entity: jqinak-hkust
+    project: embodied_lewm_open_loop_batch_sequencelen_200
+    name: lewm_open_loop_batch_sequencelen_200
+    id: open_loop_batch_sequencelen_200
+    resume: allow
+    log_model: false
+wm:
+  type: lewm
+  history_size: 3
+  num_preds: ${eval:'${sequence_len} - ${wm.history_size}'}
+  embed_dim: 192
+  action_dim: 7
+  state_dim: 8
+predictor:
+  depth: 6
+  heads: 16
+  mlp_dim: 2048
+  dim_head: 64
+  dropout: 0.1
+  emb_dropout: 0.0
+loss:
+  sigreg:
+    weight: 0.09
+    kwargs:
+      knots: 17
+      num_proj: 1024
+  open_loop:
+    weight: 1.0
+    k: 10
+    random_start: true
+    curriculum:
+      enabled: true
+      schedule:
+      - until_epoch: 10
+        k: 50
+      - until_epoch: 20
+        k: 80
+      - until_epoch: 30
+        k: 110
+      - until_epoch: 40
+        k: 140
+      - until_epoch: 50
+        k: 170
+      - until_epoch: 99999
+        k: 200
+data:
+  dataset:
+    type: libero
+    root: /project/peilab/qjl/2026/playground/dataset/libero
+    split: train
+    num_steps: ${sequence_len}
+    frameskip: 1
+    window_stride: 20
+    keys_to_load:
+    - pixels
+    - action
+    - state
+    pixel_key: image
+    max_episode_cache: 8
